@@ -26,6 +26,8 @@ export interface Schedule {
   timeOfDay: string; // "HH:MM", 24h
   enabled: boolean;
   notificationIds: string[];
+  /** 0=Sun..6=Sat days this dose recurs on. null means every day. */
+  daysOfWeek: number[] | null;
 }
 
 export interface IntakeLog {

@@ -1,6 +1,7 @@
 import { getDb } from './client';
 import type { DoseStatus, DoseWithMedication, IntakeLog } from '@/src/types';
 import { todayDateString } from '@/src/utils/date';
+import { isScheduleActiveOnWeekday } from '@/src/utils/schedule';
 
 interface LogRow {
   id: number;
@@ -24,14 +25,22 @@ function mapLog(row: LogRow): IntakeLog {
   };
 }
 
-/** Lazily creates today's pending log rows for every enabled schedule that doesn't have one yet. */
+/** Lazily creates today's pending log rows for every enabled schedule that recurs today and
+ * doesn't have a row yet. */
 export async function ensureTodayLogs(): Promise<void> {
   const db = await getDb();
   const today = todayDateString();
-  const schedules = await db.getAllAsync<{ id: number; medication_id: number; time_of_day: string }>(
-    'SELECT id, medication_id, time_of_day FROM schedules WHERE enabled = 1'
-  );
+  const todayWeekday = new Date().getDay();
+  const schedules = await db.getAllAsync<{
+    id: number;
+    medication_id: number;
+    time_of_day: string;
+    days_of_week: string | null;
+  }>('SELECT id, medication_id, time_of_day, days_of_week FROM schedules WHERE enabled = 1');
   for (const schedule of schedules) {
+    const daysOfWeek = schedule.days_of_week ? (JSON.parse(schedule.days_of_week) as number[]) : null;
+    if (!isScheduleActiveOnWeekday(daysOfWeek, todayWeekday)) continue;
+
     const existing = await db.getFirstAsync<{ id: number }>(
       'SELECT id FROM intake_logs WHERE schedule_id = ? AND scheduled_date = ?',
       schedule.id,
@@ -65,24 +74,16 @@ function mapDose(row: DoseRow): DoseWithMedication {
   return { ...mapLog(row), medicationName: row.medication_name, dosage: row.medication_dosage };
 }
 
-export async function getTodayDoses(): Promise<DoseWithMedication[]> {
-  await ensureTodayLogs();
+/** All doses scheduled for one specific date — including today, present and future times alike.
+ * The home screen is just this called with today's date: a day is a day, today isn't special. */
+export async function getDosesForDate(dateStr: string): Promise<DoseWithMedication[]> {
+  if (dateStr === todayDateString()) {
+    await ensureTodayLogs();
+  }
   const db = await getDb();
-  const today = todayDateString();
   const rows = await db.getAllAsync<DoseRow>(
     `${DOSE_SELECT} WHERE intake_logs.scheduled_date = ? ORDER BY intake_logs.scheduled_time`,
-    today
-  );
-  return rows.map(mapDose);
-}
-
-export async function getHistory(limit = 200): Promise<DoseWithMedication[]> {
-  const db = await getDb();
-  const rows = await db.getAllAsync<DoseRow>(
-    `${DOSE_SELECT} WHERE intake_logs.status != 'pending'
-     ORDER BY intake_logs.scheduled_date DESC, intake_logs.scheduled_time DESC
-     LIMIT ?`,
-    limit
+    dateStr
   );
   return rows.map(mapDose);
 }
@@ -93,6 +94,12 @@ export async function getLog(logId: number): Promise<IntakeLog | null> {
   return row ? mapLog(row) : null;
 }
 
+export async function getDoseById(logId: number): Promise<DoseWithMedication | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<DoseRow>(`${DOSE_SELECT} WHERE intake_logs.id = ?`, logId);
+  return row ? mapDose(row) : null;
+}
+
 export async function setLogStatus(logId: number, status: DoseStatus): Promise<void> {
   const db = await getDb();
   await db.runAsync(
@@ -101,6 +108,12 @@ export async function setLogStatus(logId: number, status: DoseStatus): Promise<v
     status === 'taken' ? new Date().toISOString() : null,
     logId
   );
+}
+
+/** Corrects the recorded taken time for a dose already marked taken. */
+export async function setLogTakenAt(logId: number, takenAtIso: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE intake_logs SET taken_at = ? WHERE id = ?', takenAtIso, logId);
 }
 
 /** Resolves today's log row for a given schedule, creating it if needed (used from the notification handler). */
@@ -117,6 +130,31 @@ export async function findOrCreateTodayLogForSchedule(scheduleId: number): Promi
     throw new Error(`No log row found for schedule ${scheduleId} on ${today}`);
   }
   return mapLog(row);
+}
+
+export interface DailyAdherence {
+  taken: number;
+  resolved: number; // taken + skipped
+}
+
+/** Per-day taken/resolved counts between two dates (inclusive), for the adherence calendar. */
+export async function getDailyAdherence(startDate: string, endDate: string): Promise<Record<string, DailyAdherence>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ scheduled_date: string; taken: number; resolved: number }>(
+    `SELECT scheduled_date,
+            SUM(CASE WHEN status = 'taken' THEN 1 ELSE 0 END) AS taken,
+            SUM(CASE WHEN status IN ('taken', 'skipped') THEN 1 ELSE 0 END) AS resolved
+     FROM intake_logs
+     WHERE scheduled_date BETWEEN ? AND ?
+     GROUP BY scheduled_date`,
+    startDate,
+    endDate
+  );
+  const result: Record<string, DailyAdherence> = {};
+  for (const row of rows) {
+    result[row.scheduled_date] = { taken: row.taken, resolved: row.resolved };
+  }
+  return result;
 }
 
 export async function getTodayStatusForSchedule(scheduleId: number): Promise<DoseStatus | null> {

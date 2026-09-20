@@ -1,17 +1,17 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { getTodayDoses } from '@/src/db/logs';
+import { getDoseById } from '@/src/db/logs';
 import type { DoseWithMedication } from '@/src/types';
 
-export function useTodayDoses() {
-  const [doses, setDoses] = useState<DoseWithMedication[]>([]);
+export function useDose(logId: number) {
+  const [dose, setDose] = useState<DoseWithMedication | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const rows = await getTodayDoses();
-    setDoses(rows);
+    const row = await getDoseById(logId);
+    setDose(row);
     setLoading(false);
-  }, []);
+  }, [logId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -19,5 +19,5 @@ export function useTodayDoses() {
     }, [refresh])
   );
 
-  return { doses, loading, refresh };
+  return { dose, loading, refresh };
 }

@@ -1,20 +1,18 @@
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useTodayDoses } from '@/src/hooks/useTodayDoses';
-import { DoseListItem } from '@/src/components/DoseListItem';
+import { useDayDoses } from '@/src/hooks/useDayDoses';
+import { AdherenceCalendar } from '@/src/components/AdherenceCalendar';
+import { DoseRow } from '@/src/components/DoseRow';
 import { EmptyState } from '@/src/components/EmptyState';
-import { markDose } from '@/src/db/actions';
 import { colors, spacing } from '@/src/theme';
-import type { DoseStatus } from '@/src/types';
+import { todayDateString } from '@/src/utils/date';
 
+// The home screen is just today's day-detail view, plus the calendar and an empty-state CTA —
+// a day is a day, today isn't a special case for the data or the row UI.
 export default function TodayScreen() {
-  const { doses, loading, refresh } = useTodayDoses();
+  const today = todayDateString();
+  const { doses, loading, refresh } = useDayDoses(today);
   const router = useRouter();
-
-  const handleMark = async (logId: number, status: DoseStatus) => {
-    await markDose(logId, status);
-    await refresh();
-  };
 
   return (
     <View style={styles.container}>
@@ -22,7 +20,8 @@ export default function TodayScreen() {
         contentContainerStyle={styles.list}
         data={doses}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => <DoseListItem dose={item} onMark={(status) => handleMark(item.id, status)} />}
+        renderItem={({ item }) => <DoseRow dose={item} onChange={refresh} />}
+        ListHeaderComponent={<AdherenceCalendar />}
         ListEmptyComponent={
           !loading ? (
             <EmptyState

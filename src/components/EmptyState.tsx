@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { Mascot } from '@/src/components/Mascot';
 import { colors, spacing } from '@/src/theme';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 export function EmptyState({ title, subtitle }: Props) {
   return (
     <View style={styles.container}>
+      <Mascot size={56} />
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
     </View>

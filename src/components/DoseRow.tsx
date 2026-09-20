@@ -1,12 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors, radii, spacing } from '@/src/theme';
 import { formatTime } from '@/src/utils/date';
+import { markDose } from '@/src/db/actions';
 import type { DoseStatus, DoseWithMedication } from '@/src/types';
-
-interface Props {
-  dose: DoseWithMedication;
-  onMark: (status: DoseStatus) => void;
-}
 
 const STATUS_LABEL: Record<DoseStatus, string> = {
   pending: 'Pending',
@@ -14,9 +11,23 @@ const STATUS_LABEL: Record<DoseStatus, string> = {
   skipped: 'Skipped',
 };
 
-export function DoseListItem({ dose, onMark }: Props) {
+interface Props {
+  dose: DoseWithMedication;
+  onChange: () => void;
+}
+
+/** One dose, used identically on the Today screen and a day-detail screen — a day is a day.
+ * Tapping the row opens the full dose detail; the inline actions are a fast path that skips it. */
+export function DoseRow({ dose, onChange }: Props) {
+  const router = useRouter();
+
+  const handleMark = async (status: DoseStatus) => {
+    await markDose(dose.id, status);
+    onChange();
+  };
+
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={() => router.push(`/dose/${dose.id}`)}>
       <View style={styles.row}>
         <Text style={styles.time}>{formatTime(dose.scheduledTime)}</Text>
         <StatusPill status={dose.status} />
@@ -26,19 +37,19 @@ export function DoseListItem({ dose, onMark }: Props) {
 
       {dose.status === 'pending' ? (
         <View style={styles.actions}>
-          <Pressable style={[styles.button, styles.takenButton]} onPress={() => onMark('taken')}>
+          <Pressable style={[styles.button, styles.takenButton]} onPress={() => handleMark('taken')}>
             <Text style={styles.takenButtonText}>Mark taken</Text>
           </Pressable>
-          <Pressable style={[styles.button, styles.skipButton]} onPress={() => onMark('skipped')}>
+          <Pressable style={[styles.button, styles.skipButton]} onPress={() => handleMark('skipped')}>
             <Text style={styles.skipButtonText}>Skip</Text>
           </Pressable>
         </View>
       ) : (
-        <Pressable style={styles.undoButton} onPress={() => onMark('pending')}>
+        <Pressable style={styles.undoButton} onPress={() => handleMark('pending')}>
           <Text style={styles.undoButtonText}>Undo</Text>
         </Pressable>
       )}
-    </View>
+    </Pressable>
   );
 }
 

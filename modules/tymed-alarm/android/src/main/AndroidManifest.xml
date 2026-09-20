@@ -1,0 +1,31 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.VIBRATE" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+  <!-- Needed even for AlarmManager.setAlarmClock() as of Android 13+. USE_EXACT_ALARM
+       (rather than SCHEDULE_EXACT_ALARM) is a manifest-only grant with no runtime prompt,
+       reserved for alarm-clock/calendar-style apps — exactly this use case. -->
+  <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+  <application>
+    <receiver
+      android:name="expo.modules.tymedalarm.AlarmReceiver"
+      android:exported="false" />
+
+    <service
+      android:name="expo.modules.tymedalarm.AlarmRingService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
+
+    <activity
+      android:name="expo.modules.tymedalarm.AlarmActivity"
+      android:exported="false"
+      android:launchMode="singleTop"
+      android:excludeFromRecents="true"
+      android:theme="@style/Theme.AppCompat.NoActionBar" />
+  </application>
+
+</manifest>

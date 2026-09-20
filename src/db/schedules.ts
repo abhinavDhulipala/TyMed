@@ -1,5 +1,6 @@
 import { getDb } from './client';
 import type { Schedule } from '@/src/types';
+export { isScheduleActiveOnWeekday } from '@/src/utils/schedule';
 
 interface ScheduleRow {
   id: number;
@@ -7,6 +8,7 @@ interface ScheduleRow {
   time_of_day: string;
   enabled: number;
   notification_ids: string | null;
+  days_of_week: string | null;
 }
 
 function mapSchedule(row: ScheduleRow): Schedule {
@@ -16,6 +18,7 @@ function mapSchedule(row: ScheduleRow): Schedule {
     timeOfDay: row.time_of_day,
     enabled: row.enabled === 1,
     notificationIds: row.notification_ids ? (JSON.parse(row.notification_ids) as string[]) : [],
+    daysOfWeek: row.days_of_week ? (JSON.parse(row.days_of_week) as number[]) : null,
   };
 }
 
@@ -34,12 +37,34 @@ export async function getSchedule(id: number): Promise<Schedule | null> {
   return row ? mapSchedule(row) : null;
 }
 
-export async function createSchedule(medicationId: number, timeOfDay: string): Promise<number> {
+export interface ScheduleWithMedication extends Schedule {
+  medicationName: string;
+  dosage: string | null;
+}
+
+/** Every enabled schedule across all medications, for re-arming native alarms on app start. */
+export async function listAllEnabledSchedulesWithMedication(): Promise<ScheduleWithMedication[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<ScheduleRow & { name: string; dosage: string | null }>(
+    `SELECT schedules.*, medications.name AS name, medications.dosage AS dosage
+     FROM schedules
+     JOIN medications ON medications.id = schedules.medication_id
+     WHERE schedules.enabled = 1`
+  );
+  return rows.map((row) => ({ ...mapSchedule(row), medicationName: row.name, dosage: row.dosage }));
+}
+
+export async function createSchedule(
+  medicationId: number,
+  timeOfDay: string,
+  daysOfWeek: number[] | null = null
+): Promise<number> {
   const db = await getDb();
   const result = await db.runAsync(
-    'INSERT INTO schedules (medication_id, time_of_day, enabled) VALUES (?, ?, 1)',
+    'INSERT INTO schedules (medication_id, time_of_day, enabled, days_of_week) VALUES (?, ?, 1, ?)',
     medicationId,
-    timeOfDay
+    timeOfDay,
+    daysOfWeek ? JSON.stringify(daysOfWeek) : null
   );
   return result.lastInsertRowId;
 }

@@ -12,7 +12,12 @@ export interface MedicationFormValues {
   pillsRemaining: string;
   refillThreshold: string;
   times: string[];
+  daysOfWeek: number[]; // 0=Sun..6=Sat; all 7 = every day
 }
+
+export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const DAY_CHIP_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_FULL_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export const DEFAULT_FORM_VALUES: MedicationFormValues = {
   name: '',
@@ -22,13 +27,14 @@ export const DEFAULT_FORM_VALUES: MedicationFormValues = {
   pillsRemaining: '',
   refillThreshold: '',
   times: ['08:00'],
+  daysOfWeek: ALL_DAYS,
 };
 
 interface Props {
   initial?: MedicationFormValues;
   submitLabel: string;
   submitting?: boolean;
-  onSubmit: (input: MedicationInput, times: string[]) => Promise<void>;
+  onSubmit: (input: MedicationInput, times: string[], daysOfWeek: number[]) => Promise<void>;
   onDelete?: () => Promise<void>;
 }
 
@@ -68,13 +74,22 @@ export function MedicationForm({ initial, submitLabel, submitting, onSubmit, onD
       values.times.map((t, i) => (i === index ? time : t))
     );
 
+  const toggleDay = (day: number) => {
+    const isSelected = values.daysOfWeek.includes(day);
+    if (isSelected && values.daysOfWeek.length === 1) return; // keep at least one day active
+    const next = isSelected
+      ? values.daysOfWeek.filter((d) => d !== day)
+      : [...values.daysOfWeek, day].sort();
+    setField('daysOfWeek', next);
+  };
+
   const handleSubmit = async () => {
     const input = toMedicationInput(values);
     if (!input) {
       Alert.alert('Name required', 'Please enter a medication name.');
       return;
     }
-    await onSubmit(input, values.times);
+    await onSubmit(input, values.times, values.daysOfWeek);
   };
 
   const handleDelete = () => {
@@ -129,6 +144,29 @@ export function MedicationForm({ initial, submitLabel, submitting, onSubmit, onD
         <Pressable style={styles.addTimeButton} onPress={addTime}>
           <Text style={styles.addTimeText}>+ Add time</Text>
         </Pressable>
+      </Field>
+
+      <Field label="Repeats on">
+        <View style={styles.dayRow}>
+          {DAY_CHIP_LABELS.map((label, day) => {
+            const selected = values.daysOfWeek.includes(day);
+            return (
+              <Pressable
+                key={day}
+                style={[styles.dayChip, selected && styles.dayChipSelected]}
+                onPress={() => toggleDay(day)}
+                accessibilityLabel={DAY_FULL_LABELS[day]}
+              >
+                <Text style={[styles.dayChipText, selected && styles.dayChipTextSelected]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.help}>
+          {values.daysOfWeek.length === 7
+            ? 'Every day'
+            : values.daysOfWeek.map((d) => DAY_FULL_LABELS[d].slice(0, 3)).join(', ')}
+        </Text>
       </Field>
 
       <View style={styles.pillRow}>
@@ -229,6 +267,37 @@ const styles = StyleSheet.create({
   addTimeText: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  dayRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  dayChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dayChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  dayChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  dayChipTextSelected: {
+    color: '#FFFFFF',
+  },
+  help: {
+    fontSize: 13,
+    color: colors.textMuted,
   },
   submitButton: {
     backgroundColor: colors.primary,

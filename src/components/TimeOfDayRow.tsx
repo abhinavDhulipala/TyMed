@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useTimeFormat } from '@/src/hooks/useTimeFormat';
 import { colors, radii, spacing } from '@/src/theme';
 import { formatTime } from '@/src/utils/date';
 
@@ -25,6 +26,7 @@ function dateToTimeString(date: Date): string {
 
 export function TimeOfDayRow({ value, onChange, onRemove }: Props) {
   const [showPicker, setShowPicker] = useState(false);
+  const is24Hour = useTimeFormat();
 
   const handleChange = (event: DateTimePickerEvent, selected?: Date) => {
     setShowPicker(Platform.OS === 'ios');
@@ -42,7 +44,13 @@ export function TimeOfDayRow({ value, onChange, onRemove }: Props) {
         <Text style={styles.removeText}>Remove</Text>
       </Pressable>
       {showPicker ? (
-        <DateTimePicker value={timeStringToDate(value)} mode="time" display="default" onChange={handleChange} />
+        <DateTimePicker
+          value={timeStringToDate(value)}
+          mode="time"
+          display="default"
+          is24Hour={is24Hour}
+          onChange={handleChange}
+        />
       ) : null}
     </View>
   );

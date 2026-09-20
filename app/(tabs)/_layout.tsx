@@ -27,7 +27,7 @@ export default function TabsLayout() {
         name="medications"
         options={{ title: 'Medications', headerShown: false, tabBarIcon: TabIcon('medkit-outline') }}
       />
-      <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: TabIcon('time-outline') }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: TabIcon('settings-outline') }} />
     </Tabs>
   );
 }

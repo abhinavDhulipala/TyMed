@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { getDb } from '@/src/db/client';
+import { captureException } from '@/src/observability/sentry';
 import { todayDateString } from '@/src/utils/date';
 
 export const DOSE_CATEGORY = 'dose-reminder';
@@ -90,8 +91,7 @@ export async function initNotifications(): Promise<void> {
         name: 'Dose reminders',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#2F6690',
-        sound: 'default',
+        lightColor: '#D97742',
       });
     }
 
@@ -102,5 +102,6 @@ export async function initNotifications(): Promise<void> {
   } catch (error) {
     notificationsAvailable = false;
     console.warn('[notifications] failed to initialize, reminders will be disabled:', error);
+    captureException(error);
   }
 }

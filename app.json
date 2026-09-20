@@ -14,7 +14,7 @@
     "android": {
       "package": "com.tymed.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F6EFE2",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -32,9 +32,10 @@
         "expo-notifications",
         {
           "icon": "./assets/android-icon-foreground.png",
-          "color": "#2F6690"
+          "color": "#D97742"
         }
-      ]
+      ],
+      "@sentry/react-native"
     ]
   }
 }
