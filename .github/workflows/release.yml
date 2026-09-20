@@ -32,7 +32,7 @@ jobs:
           SDK_ROOT="$HOME/android-sdk"
           mkdir -p "$SDK_ROOT/cmdline-tools"
           curl -sSL -o cmdline-tools.zip \
-            https://edgedl.me.gvt1.com/android/studio/cmdline-tools/latest/commandlinetools-linux-15859902_latest.zip
+            https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip
           unzip -q cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
           mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
