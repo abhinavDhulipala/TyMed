@@ -1,0 +1,67 @@
+name: Release
+
+# Building and publishing an APK only happens for an explicit version tag (vX.Y.Z) — pushing to
+# main does not trigger this, so day-to-day commits stay free. Tag a commit to cut a release:
+#   git tag v1.0.1 && git push origin v1.0.1
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore release keystore
+        run: |
+          mkdir -p keystores
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystores/tymed-release.jks
+          cat > keystore.properties <<EOF
+          RELEASE_STORE_FILE=../keystores/tymed-release.jks
+          RELEASE_STORE_PASSWORD=${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}
+          EOF
+
+      - name: Prebuild native Android project
+        run: npx expo prebuild --platform android
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          # No Sentry project is configured yet — without this, the Sentry Gradle plugin hard-
+          # fails a release build trying to upload source maps. Remove once EXPO_PUBLIC_SENTRY_DSN
+          # and a real Sentry auth token are wired up as secrets.
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK for the release
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/TyMed-${{ github.ref_name }}.apk"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/TyMed-${{ github.ref_name }}.apk
+          generate_release_notes: true

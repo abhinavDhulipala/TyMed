@@ -20,6 +20,11 @@ expo-env.d.ts
 build/
 .cxx/
 
+# Release signing — never commit the keystore or its passwords, even privately.
+# CI reads these from GitHub Actions secrets instead (see .github/workflows/release.yml).
+/keystores/
+keystore.properties
+
 # Metro
 .metro-health-check*
 
