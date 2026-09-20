@@ -20,14 +20,23 @@ export interface MedicationInput {
   refillThreshold: number | null;
 }
 
+export type RecurrenceType = 'daily' | 'weekly' | 'monthly';
+
 export interface Schedule {
   id: number;
   medicationId: number;
   timeOfDay: string; // "HH:MM", 24h
   enabled: boolean;
   notificationIds: string[];
-  /** 0=Sun..6=Sat days this dose recurs on. null means every day. */
+  recurrenceType: RecurrenceType;
+  /** 0=Sun..6=Sat days this dose recurs on. Only meaningful (and always non-null) when
+   * recurrenceType === 'weekly'. */
   daysOfWeek: number[] | null;
+  /** "YYYY-MM-DD". The day-of-month anchor for monthly recurrence; also the earliest date this
+   * schedule is active on (null = no lower bound, for schedules predating this field). */
+  startDate: string | null;
+  /** "YYYY-MM-DD", inclusive — last date this schedule reminds on. null = no end date. */
+  endDate: string | null;
 }
 
 export interface IntakeLog {

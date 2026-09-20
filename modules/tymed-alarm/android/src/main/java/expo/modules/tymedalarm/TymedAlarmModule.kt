@@ -22,7 +22,10 @@ class AlarmRequest : Record {
   @Field val isPrimary: Boolean = false
   @Field val hour: Int = 0
   @Field val minute: Int = 0
+  @Field val recurrenceType: String = "daily"
   @Field val daysOfWeek: String = ""
+  @Field val startDate: String = ""
+  @Field val endDate: String = ""
 }
 
 class TymedAlarmModule : Module() {
@@ -60,7 +63,10 @@ class TymedAlarmModule : Module() {
       putExtra(AlarmReceiver.EXTRA_IS_PRIMARY, request.isPrimary)
       putExtra(AlarmReceiver.EXTRA_HOUR, request.hour)
       putExtra(AlarmReceiver.EXTRA_MINUTE, request.minute)
+      putExtra(AlarmReceiver.EXTRA_RECURRENCE_TYPE, request.recurrenceType)
       putExtra(AlarmReceiver.EXTRA_DAYS_OF_WEEK, request.daysOfWeek)
+      putExtra(AlarmReceiver.EXTRA_START_DATE, request.startDate)
+      putExtra(AlarmReceiver.EXTRA_END_DATE, request.endDate)
     }
     val operation = PendingIntent.getBroadcast(
       context,

@@ -71,6 +71,37 @@ export async function updateMedication(id: number, input: MedicationInput): Prom
   );
 }
 
+export interface DuplicateCheck {
+  /** A medication with the same name, dosage, and form already exists (blocking). */
+  exact: Medication | null;
+  /** Same name, but dosage and/or form differ — likely a typo rather than an intentional
+   * second medication (warn, don't block). */
+  partial: Medication[];
+}
+
+function normalize(value: string | null): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+/** Checks for existing medications that collide with the given name/dosage/form, excluding
+ * `excludeId` (the medication being edited, if any). */
+export async function findDuplicateMedication(
+  input: Pick<MedicationInput, 'name' | 'dosage' | 'form'>,
+  excludeId?: number
+): Promise<DuplicateCheck> {
+  const all = await listMedications();
+  const candidates = all.filter((m) => m.id !== excludeId && normalize(m.name) === normalize(input.name));
+
+  const exact =
+    candidates.find(
+      (m) => normalize(m.dosage) === normalize(input.dosage) && normalize(m.form) === normalize(input.form)
+    ) ?? null;
+
+  const partial = candidates.filter((m) => m !== exact);
+
+  return { exact, partial };
+}
+
 export async function deleteMedication(id: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM medications WHERE id = ?', id);

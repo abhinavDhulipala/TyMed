@@ -28,7 +28,7 @@ export function formatTime(hhmm: string): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
-function parseDateStr(dateStr: string): Date {
+export function parseDateStr(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
 }

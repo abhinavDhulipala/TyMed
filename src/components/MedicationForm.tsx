@@ -1,8 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { colors, radii, spacing } from '@/src/theme';
 import { TimeOfDayRow } from './TimeOfDayRow';
-import type { MedicationInput } from '@/src/types';
+import type { DuplicateCheck } from '@/src/db/medications';
+import type { MedicationInput, RecurrenceType } from '@/src/types';
+import { todayDateString } from '@/src/utils/date';
 
 export interface MedicationFormValues {
   name: string;
@@ -12,12 +15,34 @@ export interface MedicationFormValues {
   pillsRemaining: string;
   refillThreshold: string;
   times: string[];
-  daysOfWeek: number[]; // 0=Sun..6=Sat; all 7 = every day
+  recurrenceType: RecurrenceType;
+  daysOfWeek: number[]; // 0=Sun..6=Sat; only used when recurrenceType === 'weekly'
+  hasEndDate: boolean;
+  endDate: string; // "YYYY-MM-DD"; only used when hasEndDate
+}
+
+/** What the form hands back on submit — the screen resolves this into DB fields (in particular
+ * the monthly start-date anchor, which depends on whether an existing schedule already has one). */
+export interface RecurrenceSelection {
+  recurrenceType: RecurrenceType;
+  daysOfWeek: number[] | null;
+  endDate: string | null;
 }
 
 export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const DAY_CHIP_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DAY_FULL_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const RECURRENCE_OPTIONS: { type: RecurrenceType; label: string }[] = [
+  { type: 'daily', label: 'Daily' },
+  { type: 'weekly', label: 'Weekly' },
+  { type: 'monthly', label: 'Monthly' },
+];
+
+function defaultEndDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return todayDateString(d);
+}
 
 export const DEFAULT_FORM_VALUES: MedicationFormValues = {
   name: '',
@@ -27,15 +52,43 @@ export const DEFAULT_FORM_VALUES: MedicationFormValues = {
   pillsRemaining: '',
   refillThreshold: '',
   times: ['08:00'],
+  recurrenceType: 'daily',
   daysOfWeek: ALL_DAYS,
+  hasEndDate: false,
+  endDate: '',
 };
 
 interface Props {
   initial?: MedicationFormValues;
   submitLabel: string;
   submitting?: boolean;
-  onSubmit: (input: MedicationInput, times: string[], daysOfWeek: number[]) => Promise<void>;
+  onSubmit: (input: MedicationInput, times: string[], recurrence: RecurrenceSelection) => Promise<void>;
   onDelete?: () => Promise<void>;
+  /** Checks for an existing medication that collides with this one, so the form can block an
+   * exact duplicate and warn on a likely-mistake partial match before saving. */
+  checkDuplicate: (input: Pick<MedicationInput, 'name' | 'dosage' | 'form'>) => Promise<DuplicateCheck>;
+  /** Day-of-month (1-31) the "Monthly" option repeats on — today's for a new medication, or the
+   * existing schedule's anchor when editing one that's already monthly. */
+  monthlyAnchorDay: number;
+}
+
+function confirmAsync(title: string, message: string, confirmLabel: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: confirmLabel, onPress: () => resolve(true) },
+    ]);
+  });
+}
+
+function describeMedication(dosage: string | null, form: string | null): string {
+  return [dosage, form].filter(Boolean).join(', ') || 'no dosage or form set';
+}
+
+function ordinal(n: number): string {
+  const suffixes: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' };
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (suffixes[n % 10] ?? 'th');
+  return `${n}${suffix}`;
 }
 
 function toMedicationInput(values: MedicationFormValues): MedicationInput | null {
@@ -55,8 +108,18 @@ function toMedicationInput(values: MedicationFormValues): MedicationInput | null
   };
 }
 
-export function MedicationForm({ initial, submitLabel, submitting, onSubmit, onDelete }: Props) {
+export function MedicationForm({
+  initial,
+  submitLabel,
+  submitting,
+  onSubmit,
+  onDelete,
+  checkDuplicate,
+  monthlyAnchorDay,
+}: Props) {
   const [values, setValues] = useState<MedicationFormValues>(initial ?? DEFAULT_FORM_VALUES);
+  const [checking, setChecking] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   const setField = <K extends keyof MedicationFormValues>(key: K, value: MedicationFormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -83,13 +146,54 @@ export function MedicationForm({ initial, submitLabel, submitting, onSubmit, onD
     setField('daysOfWeek', next);
   };
 
+  const toggleHasEndDate = (value: boolean) => {
+    setField('hasEndDate', value);
+    if (value && !values.endDate) {
+      setField('endDate', defaultEndDate());
+    }
+  };
+
+  const handleEndDateChange = (event: DateTimePickerEvent, selected?: Date) => {
+    setShowEndDatePicker(Platform.OS === 'ios');
+    if (event.type === 'set' && selected) {
+      setField('endDate', todayDateString(selected));
+    }
+  };
+
   const handleSubmit = async () => {
     const input = toMedicationInput(values);
     if (!input) {
       Alert.alert('Name required', 'Please enter a medication name.');
       return;
     }
-    await onSubmit(input, values.times, values.daysOfWeek);
+
+    setChecking(true);
+    const duplicate = await checkDuplicate(input);
+    setChecking(false);
+
+    if (duplicate.exact) {
+      Alert.alert(
+        'Already added',
+        `${input.name} (${describeMedication(input.dosage, input.form)}) is already in your medications. Edit the existing one instead of adding it again.`
+      );
+      return;
+    }
+
+    if (duplicate.partial.length > 0) {
+      const existing = duplicate.partial[0];
+      const proceed = await confirmAsync(
+        'Similar medication exists',
+        `You already have "${existing.name}" (${describeMedication(existing.dosage, existing.form)}). This one is (${describeMedication(input.dosage, input.form)}) — different enough to be a mistake. Add it as a separate medication anyway?`,
+        'Add anyway'
+      );
+      if (!proceed) return;
+    }
+
+    await onSubmit(input, values.times, {
+      recurrenceType: values.recurrenceType,
+      daysOfWeek: values.recurrenceType === 'weekly' ? values.daysOfWeek : null,
+      endDate: values.hasEndDate ? values.endDate : null,
+    });
   };
 
   const handleDelete = () => {
@@ -146,27 +250,78 @@ export function MedicationForm({ initial, submitLabel, submitting, onSubmit, onD
         </Pressable>
       </Field>
 
-      <Field label="Repeats on">
-        <View style={styles.dayRow}>
-          {DAY_CHIP_LABELS.map((label, day) => {
-            const selected = values.daysOfWeek.includes(day);
+      <Field label="Repeats">
+        <View style={styles.segmentedRow}>
+          {RECURRENCE_OPTIONS.map((option) => {
+            const selected = values.recurrenceType === option.type;
             return (
               <Pressable
-                key={day}
-                style={[styles.dayChip, selected && styles.dayChipSelected]}
-                onPress={() => toggleDay(day)}
-                accessibilityLabel={DAY_FULL_LABELS[day]}
+                key={option.type}
+                style={[styles.segment, selected && styles.segmentSelected]}
+                onPress={() => setField('recurrenceType', option.type)}
               >
-                <Text style={[styles.dayChipText, selected && styles.dayChipTextSelected]}>{label}</Text>
+                <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{option.label}</Text>
               </Pressable>
             );
           })}
         </View>
-        <Text style={styles.help}>
-          {values.daysOfWeek.length === 7
-            ? 'Every day'
-            : values.daysOfWeek.map((d) => DAY_FULL_LABELS[d].slice(0, 3)).join(', ')}
-        </Text>
+
+        {values.recurrenceType === 'weekly' ? (
+          <>
+            <View style={styles.dayRow}>
+              {DAY_CHIP_LABELS.map((label, day) => {
+                const selected = values.daysOfWeek.includes(day);
+                return (
+                  <Pressable
+                    key={day}
+                    style={[styles.dayChip, selected && styles.dayChipSelected]}
+                    onPress={() => toggleDay(day)}
+                    accessibilityLabel={DAY_FULL_LABELS[day]}
+                  >
+                    <Text style={[styles.dayChipText, selected && styles.dayChipTextSelected]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.help}>
+              {values.daysOfWeek.length === 7
+                ? 'Every day'
+                : values.daysOfWeek.map((d) => DAY_FULL_LABELS[d].slice(0, 3)).join(', ')}
+            </Text>
+          </>
+        ) : null}
+
+        {values.recurrenceType === 'monthly' ? (
+          <Text style={styles.help}>Repeats on the {ordinal(monthlyAnchorDay)} of every month.</Text>
+        ) : null}
+      </Field>
+
+      <Field label="Ends">
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>{values.hasEndDate ? 'On a specific date' : 'Never'}</Text>
+          <Switch
+            value={values.hasEndDate}
+            onValueChange={toggleHasEndDate}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+        {values.hasEndDate ? (
+          <>
+            <Pressable style={styles.endDateButton} onPress={() => setShowEndDatePicker(true)}>
+              <Text style={styles.endDateText}>{values.endDate || defaultEndDate()}</Text>
+            </Pressable>
+            {showEndDatePicker ? (
+              <DateTimePicker
+                value={values.endDate ? new Date(`${values.endDate}T00:00:00`) : new Date()}
+                mode="date"
+                display="default"
+                minimumDate={new Date()}
+                onChange={handleEndDateChange}
+              />
+            ) : null}
+          </>
+        ) : null}
       </Field>
 
       <View style={styles.pillRow}>
@@ -203,8 +358,8 @@ export function MedicationForm({ initial, submitLabel, submitting, onSubmit, onD
         />
       </Field>
 
-      <Pressable style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
-        <Text style={styles.submitText}>{submitting ? 'Saving…' : submitLabel}</Text>
+      <Pressable style={styles.submitButton} onPress={handleSubmit} disabled={submitting || checking}>
+        <Text style={styles.submitText}>{checking ? 'Checking…' : submitting ? 'Saving…' : submitLabel}</Text>
       </Pressable>
 
       {onDelete ? (
@@ -268,6 +423,30 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
+  segmentedRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: radii.sm,
+    padding: 3,
+    marginBottom: spacing.sm,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderRadius: radii.sm - 2,
+  },
+  segmentSelected: {
+    backgroundColor: colors.primary,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  segmentTextSelected: {
+    color: '#FFFFFF',
+  },
   dayRow: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -298,6 +477,35 @@ const styles = StyleSheet.create({
   help: {
     fontSize: 13,
     color: colors.textMuted,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  switchLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  endDateButton: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radii.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignSelf: 'flex-start',
+  },
+  endDateText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 15,
   },
   submitButton: {
     backgroundColor: colors.primary,

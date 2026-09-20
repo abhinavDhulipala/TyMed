@@ -1,71 +1,33 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { MIGRATIONS } from './migrations';
 
-const CURRENT_VERSION = 3;
-
+/**
+ * Applies every migration newer than the database's current PRAGMA user_version, in order,
+ * each inside its own exclusive transaction — so a migration either fully applies (schema
+ * change + version bump together) or fully rolls back, never leaves the schema half-updated.
+ * (An earlier hand-rolled version of this runner could bump the version without actually
+ * finishing the schema change if interrupted; wrapping each step in one transaction makes that
+ * failure mode structurally impossible instead of something to remember to guard against.)
+ *
+ * To ship a schema change, add a file under src/db/migrations/ and list it in
+ * src/db/migrations/index.ts — nothing here needs to change.
+ */
 export async function runMigrations(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA journal_mode = WAL;');
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
-  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  const version = row?.user_version ?? 0;
+  for (const migration of MIGRATIONS) {
+    const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+    const currentVersion = row?.user_version ?? 0;
+    if (currentVersion >= migration.version) continue;
 
-  if (version < 1) {
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS medications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        dosage TEXT,
-        form TEXT,
-        notes TEXT,
-        pills_remaining INTEGER,
-        refill_threshold INTEGER,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS schedules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
-        time_of_day TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        notification_ids TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS intake_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
-        schedule_id INTEGER REFERENCES schedules(id) ON DELETE CASCADE,
-        scheduled_date TEXT NOT NULL,
-        scheduled_time TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        taken_at TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_schedules_medication ON schedules(medication_id);
-      CREATE INDEX IF NOT EXISTS idx_logs_schedule_date ON intake_logs(schedule_id, scheduled_date);
-      CREATE INDEX IF NOT EXISTS idx_logs_date ON intake_logs(scheduled_date);
-    `);
-  }
-
-  if (version < 2) {
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `);
-  }
-
-  if (version < 3) {
-    // NULL means "every day" (the existing behavior for every schedule created before this
-    // migration); a non-null value is a JSON array of 0=Sun..6=Sat weekday numbers.
-    // Checked via table_info rather than assumed from version alone, so this step is safe to
-    // re-run if a previous migration attempt bumped user_version without completing (SQLite has
-    // no "ADD COLUMN IF NOT EXISTS").
-    const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(schedules)');
-    if (!columns.some((c) => c.name === 'days_of_week')) {
-      await db.execAsync(`ALTER TABLE schedules ADD COLUMN days_of_week TEXT;`);
+    try {
+      await db.withExclusiveTransactionAsync(async (txn) => {
+        await migration.up(txn);
+        await txn.execAsync(`PRAGMA user_version = ${migration.version}`);
+      });
+    } catch (error) {
+      throw new Error(`Migration ${migration.version} (${migration.name}) failed: ${error}`, { cause: error });
     }
   }
-
-  await db.execAsync(`PRAGMA user_version = ${CURRENT_VERSION}`);
 }

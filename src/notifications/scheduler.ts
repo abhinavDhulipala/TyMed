@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
 import { setScheduleNotificationIds, listAllEnabledSchedulesWithMedication } from '@/src/db/schedules';
 import { cancelNativeAlarm, scheduleNativeAlarm } from '@/src/native/alarmModule';
-import type { Schedule } from '@/src/types';
+import type { RecurrenceType, Schedule } from '@/src/types';
+import { todayDateString } from '@/src/utils/date';
 import { getNotifications, DOSE_CATEGORY } from './setup';
 
 // Android: a single native alarm per schedule rings continuously until the user responds
@@ -20,10 +21,13 @@ interface DoseReminderParams {
   medicationName: string;
   dosage: string | null;
   timeOfDay: string; // "HH:MM"
-  daysOfWeek?: number[] | null; // 0=Sun..6=Sat; null/omitted = every day
+  recurrenceType: RecurrenceType;
+  daysOfWeek?: number[] | null; // 0=Sun..6=Sat; only meaningful when recurrenceType === 'weekly'
+  startDate?: string | null; // "YYYY-MM-DD"; the monthly day-of-month anchor
+  endDate?: string | null; // "YYYY-MM-DD", inclusive
 }
 
-/** Encodes for the native side: comma-separated weekday numbers, or "" for every day. */
+/** Encodes for the native side: comma-separated weekday numbers, or "" for none/unused. */
 function encodeDaysOfWeek(daysOfWeek: number[] | null | undefined): string {
   return daysOfWeek && daysOfWeek.length > 0 ? daysOfWeek.join(',') : '';
 }
@@ -37,8 +41,14 @@ function nextOccurrenceMillis(hour: number, minute: number): number {
   return next.getTime();
 }
 
-/** Arms (or re-arms) the daily native alarm for a schedule. Android only. */
+/** Arms (or re-arms) the daily native alarm for a schedule. Android only. The native chain
+ * checks the alarm daily and only actually rings on days the recurrence rule matches (see
+ * AlarmReceiver.isActiveOn) — a schedule already past its end date is never armed at all. */
 function armAndroidDailyAlarm(params: DoseReminderParams, hour: number, minute: number): void {
+  if (params.endDate && params.endDate < todayDateString()) {
+    cancelNativeAlarm(params.scheduleId);
+    return;
+  }
   scheduleNativeAlarm({
     triggerAtMillis: nextOccurrenceMillis(hour, minute),
     requestCode: params.scheduleId,
@@ -49,11 +59,17 @@ function armAndroidDailyAlarm(params: DoseReminderParams, hour: number, minute: 
     isPrimary: true,
     hour,
     minute,
+    recurrenceType: params.recurrenceType,
     daysOfWeek: encodeDaysOfWeek(params.daysOfWeek),
+    startDate: params.startDate ?? '',
+    endDate: params.endDate ?? '',
   });
 }
 
-function buildIosContent(params: DoseReminderParams, isPrimary: boolean) {
+function buildIosContent(
+  params: Pick<DoseReminderParams, 'medicationName' | 'dosage' | 'scheduleId' | 'medicationId'>,
+  isPrimary: boolean
+) {
   return {
     title: isPrimary ? `Time for ${params.medicationName}` : `Reminder: ${params.medicationName}`,
     body: params.dosage ? `Dose: ${params.dosage}` : 'Time to take your dose',
@@ -142,7 +158,10 @@ export async function rearmAllScheduleAlarms(): Promise<void> {
         medicationName: schedule.medicationName,
         dosage: schedule.dosage,
         timeOfDay: schedule.timeOfDay,
+        recurrenceType: schedule.recurrenceType,
         daysOfWeek: schedule.daysOfWeek,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
       },
       Number(hourStr),
       Number(minuteStr)
@@ -165,7 +184,7 @@ export async function scheduleSnooze(params: SnoozeParams): Promise<string | nul
   if (!Notifications) return null;
   try {
     return await Notifications.scheduleNotificationAsync({
-      content: buildIosContent({ ...params, timeOfDay: '00:00' }, false),
+      content: buildIosContent(params, false),
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: (params.minutes ?? 10) * 60,

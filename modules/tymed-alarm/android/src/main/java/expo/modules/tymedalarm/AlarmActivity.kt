@@ -9,12 +9,16 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import java.util.Locale
 
 /**
  * Native full-screen takeover shown while an alarm rings — launched via the ring service's
@@ -26,6 +30,17 @@ class AlarmActivity : AppCompatActivity() {
   private var requestCode = -1
   private var scheduleId = -1
   private var medicationId = -1
+
+  private val tickHandler = Handler(Looper.getMainLooper())
+  private var ringingSinceMillis = 0L
+  private var elapsedLabel: TextView? = null
+
+  private val tickRunnable = object : Runnable {
+    override fun run() {
+      elapsedLabel?.text = formatElapsed(System.currentTimeMillis() - ringingSinceMillis)
+      tickHandler.postDelayed(this, 1000)
+    }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -39,6 +54,21 @@ class AlarmActivity : AppCompatActivity() {
     val dosage = intent.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
 
     setContentView(buildLayout(medicationName, dosage))
+
+    ringingSinceMillis = System.currentTimeMillis()
+    tickHandler.post(tickRunnable)
+  }
+
+  override fun onDestroy() {
+    tickHandler.removeCallbacks(tickRunnable)
+    super.onDestroy()
+  }
+
+  private fun formatElapsed(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.US, "Ringing for %d:%02d", minutes, seconds)
   }
 
   private fun showOverLockScreen() {
@@ -67,11 +97,22 @@ class AlarmActivity : AppCompatActivity() {
     }
 
     root.addView(
+      ImageView(this).apply {
+        setImageResource(R.drawable.ic_mascot)
+        val size = (96 * resources.displayMetrics.density).toInt()
+        layoutParams = LinearLayout.LayoutParams(size, size).apply {
+          gravity = Gravity.CENTER
+        }
+      }
+    )
+
+    root.addView(
       TextView(this).apply {
         text = "Time for $medicationName"
         setTextColor(Color.WHITE)
         textSize = 28f
         gravity = Gravity.CENTER
+        setPadding(0, 32, 0, 0)
       }
     )
 
@@ -86,6 +127,16 @@ class AlarmActivity : AppCompatActivity() {
         }
       )
     }
+
+    elapsedLabel = TextView(this).apply {
+      text = formatElapsed(0)
+      setTextColor(Color.WHITE)
+      alpha = 0.85f
+      textSize = 15f
+      gravity = Gravity.CENTER
+      setPadding(0, 40, 0, 0)
+    }
+    root.addView(elapsedLabel)
 
     val buttonRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL

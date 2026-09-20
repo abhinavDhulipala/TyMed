@@ -12,7 +12,14 @@ export type AlarmRequest = {
   /** Needed so a primary alarm can re-arm itself for the same time tomorrow. */
   hour: number;
   minute: number;
-  /** Comma-separated 0=Sun..6=Sat weekdays this dose recurs on; "" means every day. Gates
-   * whether a Chain A alarm actually rings today — the daily rearm always happens regardless. */
+  /** "daily" | "weekly" | "monthly" — gates whether a Chain A alarm actually rings on a given
+   * day; the daily rearm poll always happens regardless (until past endDate). */
+  recurrenceType: string;
+  /** Comma-separated 0=Sun..6=Sat weekdays; only read when recurrenceType is "weekly". */
   daysOfWeek: string;
+  /** "YYYY-MM-DD", or "" — the monthly day-of-month anchor (also a general lower bound). */
+  startDate: string;
+  /** "YYYY-MM-DD", inclusive, or "" for no end date. Past this date the alarm stops
+   * rearming itself entirely. */
+  endDate: string;
 };

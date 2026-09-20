@@ -1,8 +1,8 @@
 # TyMed
 
-A pill-tracking and medication-reminder app, inspired by Pillo's core idea: reminders that actually
-get your attention and stay out of the way once you've taken your dose. Android-first, local-only
-storage for v1 — iOS support is planned for later.
+A pill-tracking and medication-reminder app: reminders that actually get your attention and stay
+out of the way once you've taken your dose. Android-first, local-only storage for v1 — iOS
+support is planned for later.
 
 ## Features
 

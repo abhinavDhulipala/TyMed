@@ -1,6 +1,6 @@
 import { getDb } from './client';
-import type { Schedule } from '@/src/types';
-export { isScheduleActiveOnWeekday } from '@/src/utils/schedule';
+import type { RecurrenceType, Schedule } from '@/src/types';
+export { isScheduleActiveOn } from '@/src/utils/schedule';
 
 interface ScheduleRow {
   id: number;
@@ -9,6 +9,9 @@ interface ScheduleRow {
   enabled: number;
   notification_ids: string | null;
   days_of_week: string | null;
+  recurrence_type: RecurrenceType;
+  start_date: string | null;
+  end_date: string | null;
 }
 
 function mapSchedule(row: ScheduleRow): Schedule {
@@ -18,8 +21,20 @@ function mapSchedule(row: ScheduleRow): Schedule {
     timeOfDay: row.time_of_day,
     enabled: row.enabled === 1,
     notificationIds: row.notification_ids ? (JSON.parse(row.notification_ids) as string[]) : [],
+    recurrenceType: row.recurrence_type,
     daysOfWeek: row.days_of_week ? (JSON.parse(row.days_of_week) as number[]) : null,
+    startDate: row.start_date,
+    endDate: row.end_date,
   };
+}
+
+export interface RecurrenceInput {
+  recurrenceType: RecurrenceType;
+  /** Required (non-null) when recurrenceType === 'weekly'; ignored otherwise. */
+  daysOfWeek: number[] | null;
+  /** Required when recurrenceType === 'monthly' (the day-of-month anchor). */
+  startDate: string | null;
+  endDate: string | null;
 }
 
 export async function listSchedulesForMedication(medicationId: number): Promise<Schedule[]> {
@@ -57,16 +72,34 @@ export async function listAllEnabledSchedulesWithMedication(): Promise<ScheduleW
 export async function createSchedule(
   medicationId: number,
   timeOfDay: string,
-  daysOfWeek: number[] | null = null
+  recurrence: RecurrenceInput
 ): Promise<number> {
   const db = await getDb();
   const result = await db.runAsync(
-    'INSERT INTO schedules (medication_id, time_of_day, enabled, days_of_week) VALUES (?, ?, 1, ?)',
+    `INSERT INTO schedules (medication_id, time_of_day, enabled, days_of_week, recurrence_type, start_date, end_date)
+     VALUES (?, ?, 1, ?, ?, ?, ?)`,
     medicationId,
     timeOfDay,
-    daysOfWeek ? JSON.stringify(daysOfWeek) : null
+    recurrence.daysOfWeek ? JSON.stringify(recurrence.daysOfWeek) : null,
+    recurrence.recurrenceType,
+    recurrence.startDate,
+    recurrence.endDate
   );
   return result.lastInsertRowId;
+}
+
+/** Updates a schedule's recurrence in place, keeping its id (and therefore its intake_logs
+ * history) stable — used when editing a medication so unchanged time slots aren't touched. */
+export async function updateScheduleRecurrence(id: number, recurrence: RecurrenceInput): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE schedules SET days_of_week = ?, recurrence_type = ?, start_date = ?, end_date = ? WHERE id = ?',
+    recurrence.daysOfWeek ? JSON.stringify(recurrence.daysOfWeek) : null,
+    recurrence.recurrenceType,
+    recurrence.startDate,
+    recurrence.endDate,
+    id
+  );
 }
 
 export async function setScheduleNotificationIds(scheduleId: number, ids: string[]): Promise<void> {
@@ -81,11 +114,4 @@ export async function setScheduleNotificationIds(scheduleId: number, ids: string
 export async function deleteSchedule(id: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM schedules WHERE id = ?', id);
-}
-
-export async function deleteSchedulesForMedication(medicationId: number): Promise<Schedule[]> {
-  const schedules = await listSchedulesForMedication(medicationId);
-  const db = await getDb();
-  await db.runAsync('DELETE FROM schedules WHERE medication_id = ?', medicationId);
-  return schedules;
 }

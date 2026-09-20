@@ -1,7 +1,7 @@
 import { getDb } from './client';
-import type { DoseStatus, DoseWithMedication, IntakeLog } from '@/src/types';
+import type { DoseStatus, DoseWithMedication, IntakeLog, RecurrenceType } from '@/src/types';
 import { todayDateString } from '@/src/utils/date';
-import { isScheduleActiveOnWeekday } from '@/src/utils/schedule';
+import { isScheduleActiveOn } from '@/src/utils/schedule';
 
 interface LogRow {
   id: number;
@@ -30,16 +30,29 @@ function mapLog(row: LogRow): IntakeLog {
 export async function ensureTodayLogs(): Promise<void> {
   const db = await getDb();
   const today = todayDateString();
-  const todayWeekday = new Date().getDay();
   const schedules = await db.getAllAsync<{
     id: number;
     medication_id: number;
     time_of_day: string;
     days_of_week: string | null;
-  }>('SELECT id, medication_id, time_of_day, days_of_week FROM schedules WHERE enabled = 1');
+    recurrence_type: RecurrenceType;
+    start_date: string | null;
+    end_date: string | null;
+  }>(
+    'SELECT id, medication_id, time_of_day, days_of_week, recurrence_type, start_date, end_date FROM schedules WHERE enabled = 1'
+  );
   for (const schedule of schedules) {
     const daysOfWeek = schedule.days_of_week ? (JSON.parse(schedule.days_of_week) as number[]) : null;
-    if (!isScheduleActiveOnWeekday(daysOfWeek, todayWeekday)) continue;
+    const active = isScheduleActiveOn(
+      {
+        recurrenceType: schedule.recurrence_type,
+        daysOfWeek,
+        startDate: schedule.start_date,
+        endDate: schedule.end_date,
+      },
+      today
+    );
+    if (!active) continue;
 
     const existing = await db.getFirstAsync<{ id: number }>(
       'SELECT id FROM intake_logs WHERE schedule_id = ? AND scheduled_date = ?',
