@@ -14,7 +14,6 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +24,11 @@ import java.util.Locale
  * full-screen-intent notification, so it reliably appears even over a locked screen with a
  * cold JS context. Only Taken/Snooze can dismiss it (back button is disabled), matching a
  * real alarm clock rather than a normal dismissible notification.
+ *
+ * The Thyme mascot counts the ring down from a full 5:00 to 0:00, shedding a leaf pair every
+ * fifth of that stretch — full leaves at the start, bare branches by the time 5 minutes have
+ * passed — and gets visibly more anxious (faster shiver, worried face) the closer it gets.
+ * Ringing past 5 minutes just holds at the barren, max-distress state rather than going idle.
  */
 class AlarmActivity : AppCompatActivity() {
   private var requestCode = -1
@@ -33,11 +37,15 @@ class AlarmActivity : AppCompatActivity() {
 
   private val tickHandler = Handler(Looper.getMainLooper())
   private var ringingSinceMillis = 0L
-  private var elapsedLabel: TextView? = null
+  private var remainingLabel: TextView? = null
+  private var mascotView: MascotView? = null
 
   private val tickRunnable = object : Runnable {
     override fun run() {
-      elapsedLabel?.text = formatElapsed(System.currentTimeMillis() - ringingSinceMillis)
+      val elapsed = System.currentTimeMillis() - ringingSinceMillis
+      val remaining = (COUNTDOWN_MILLIS - elapsed).coerceAtLeast(0)
+      remainingLabel?.text = formatRemaining(remaining)
+      mascotView?.progress = elapsed.toFloat() / COUNTDOWN_MILLIS
       tickHandler.postDelayed(this, 1000)
     }
   }
@@ -64,11 +72,11 @@ class AlarmActivity : AppCompatActivity() {
     super.onDestroy()
   }
 
-  private fun formatElapsed(millis: Long): String {
+  private fun formatRemaining(millis: Long): String {
     val totalSeconds = (millis / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format(Locale.US, "Ringing for %d:%02d", minutes, seconds)
+    return String.format(Locale.US, "%d:%02d", minutes, seconds)
   }
 
   private fun showOverLockScreen() {
@@ -97,13 +105,12 @@ class AlarmActivity : AppCompatActivity() {
     }
 
     root.addView(
-      ImageView(this).apply {
-        setImageResource(R.drawable.ic_mascot)
-        val size = (96 * resources.displayMetrics.density).toInt()
+      MascotView(this).apply {
+        val size = (120 * resources.displayMetrics.density).toInt()
         layoutParams = LinearLayout.LayoutParams(size, size).apply {
           gravity = Gravity.CENTER
         }
-      }
+      }.also { mascotView = it }
     )
 
     root.addView(
@@ -128,15 +135,15 @@ class AlarmActivity : AppCompatActivity() {
       )
     }
 
-    elapsedLabel = TextView(this).apply {
-      text = formatElapsed(0)
+    remainingLabel = TextView(this).apply {
+      text = formatRemaining(COUNTDOWN_MILLIS)
       setTextColor(Color.WHITE)
       alpha = 0.85f
       textSize = 15f
       gravity = Gravity.CENTER
       setPadding(0, 40, 0, 0)
     }
-    root.addView(elapsedLabel)
+    root.addView(remainingLabel)
 
     val buttonRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -248,5 +255,6 @@ class AlarmActivity : AppCompatActivity() {
 
   companion object {
     const val SNOOZE_REQUEST_CODE_OFFSET = 500_000
+    private const val COUNTDOWN_MILLIS = 5 * 60 * 1000L
   }
 }
