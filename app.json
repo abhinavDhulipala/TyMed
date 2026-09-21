@@ -36,7 +36,16 @@
         }
       ],
       "@sentry/react-native",
-      "./plugins/withReleaseSigning.js"
+      "./plugins/withReleaseSigning.js",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#F6EFE2"
+        }
+      ]
     ]
   }
 }

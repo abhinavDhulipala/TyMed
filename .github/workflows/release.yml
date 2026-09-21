@@ -46,12 +46,7 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install dependencies
-        # Not `npm ci`: this project's Expo/React Native peer dependencies conflict (known,
-        # long-standing — see react-native-worklets/react-dom above), the same reason local
-        # installs all session needed --legacy-peer-deps. `npm ci` demands a lock file with
-        # zero gaps in that peer tree, which this one doesn't have; match what's actually
-        # proven to work locally instead of fighting it.
-        run: npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Restore release keystore
         run: |
@@ -63,6 +58,14 @@ jobs:
           RELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}
           EOF
+
+      - name: Set app version from tag
+        # Android refuses to install a build over an existing one unless versionCode strictly
+        # increases (same/lower and it's rejected or, on a signature/version mismatch, treated
+        # as a fresh install that wipes data) — without this every build defaulted to
+        # versionCode 1 forever, silently breaking "install to update" and any history it was
+        # supposed to preserve.
+        run: node scripts/set-version-from-tag.js "${{ github.ref_name }}"
 
       - name: Prebuild native Android project
         run: npx expo prebuild --platform android
