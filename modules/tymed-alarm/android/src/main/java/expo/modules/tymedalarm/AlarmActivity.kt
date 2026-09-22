@@ -5,7 +5,11 @@ import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -100,13 +104,13 @@ class AlarmActivity : AppCompatActivity() {
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       gravity = Gravity.CENTER
-      setBackgroundColor(Color.parseColor("#D97742"))
+      setBackgroundColor(Color.parseColor(BACKGROUND_GREEN))
       setPadding(64, 64, 64, 64)
     }
 
     root.addView(
       MascotView(this).apply {
-        val size = (120 * resources.displayMetrics.density).toInt()
+        val size = (200 * resources.displayMetrics.density).toInt()
         layoutParams = LinearLayout.LayoutParams(size, size).apply {
           gravity = Gravity.CENTER
         }
@@ -151,23 +155,54 @@ class AlarmActivity : AppCompatActivity() {
       setPadding(0, 96, 0, 0)
     }
 
+    buttonRow.addView(pillButton("Taken", primary = true).apply { setOnClickListener { onTaken() } })
     buttonRow.addView(
-      Button(this).apply {
-        text = "Taken"
-        setOnClickListener { onTaken() }
-      }
-    )
-
-    buttonRow.addView(
-      Button(this).apply {
-        text = "Snooze"
-        setPadding(48, 0, 0, 0)
+      pillButton("Snooze", primary = false).apply {
+        layoutParams = (layoutParams as LinearLayout.LayoutParams).apply {
+          marginStart = (20 * resources.displayMetrics.density).toInt()
+        }
         setOnClickListener { onSnooze() }
       }
     )
 
     root.addView(buttonRow)
     return root
+  }
+
+  /**
+   * A rounded pill button in place of the stock gray Material button, which read as a
+   * placeholder rather than a finished screen. Taken is a solid cream fill (the confident,
+   * "done" action); Snooze is a ghost outline (present but visually secondary).
+   */
+  private fun pillButton(label: String, primary: Boolean): Button {
+    val density = resources.displayMetrics.density
+    val corner = 28f * density
+    val fill = GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      cornerRadius = corner
+      if (primary) {
+        setColor(Color.parseColor("#FFFBF3"))
+      } else {
+        setColor(Color.TRANSPARENT)
+        setStroke((1.5f * density).toInt(), Color.WHITE)
+      }
+    }
+    val rippleColor = if (primary) Color.parseColor("#332E4A32") else Color.parseColor("#33FFFFFF")
+    return Button(this).apply {
+      text = label
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = 16f
+      setTextColor(if (primary) Color.parseColor(BACKGROUND_GREEN) else Color.WHITE)
+      background = RippleDrawable(ColorStateList.valueOf(rippleColor), fill, null)
+      stateListAnimator = null
+      val hPad = (30 * density).toInt()
+      val vPad = (16 * density).toInt()
+      setPadding(hPad, vPad, hPad, vPad)
+      layoutParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT
+      )
+    }
   }
 
   private fun onTaken() {
@@ -256,5 +291,6 @@ class AlarmActivity : AppCompatActivity() {
   companion object {
     const val SNOOZE_REQUEST_CODE_OFFSET = 500_000
     private const val COUNTDOWN_MILLIS = 5 * 60 * 1000L
+    private const val BACKGROUND_GREEN = "#1F3325"
   }
 }

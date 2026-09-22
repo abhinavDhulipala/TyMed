@@ -89,8 +89,8 @@ class MascotView(context: Context) : View(context) {
     val shedCount = floor(progress * LEAF_HEIGHTS.size).toInt().coerceIn(0, LEAF_HEIGHTS.size)
     LEAF_HEIGHTS.forEachIndexed { index, y ->
       // Branch stubs always sit under the leaves, so a shed pair reveals bare wood.
-      canvas.drawLine(50f, y, 46f, y - 4f, stubPaint)
-      canvas.drawLine(50f, y, 54f, y - 4f, stubPaint)
+      canvas.drawLine(50f, y, 44f, y - 5f, stubPaint)
+      canvas.drawLine(50f, y, 56f, y - 5f, stubPaint)
 
       if (index >= shedCount) {
         val color = LEAF_COLORS[index % LEAF_COLORS.size]
@@ -113,9 +113,12 @@ class MascotView(context: Context) : View(context) {
     val path = leafPath(50f, y, side)
     canvas.drawPath(path, leafPaint)
 
-    val dx = 13f * side
+    leafOutlinePaint.color = darken(color)
+    canvas.drawPath(path, leafOutlinePaint)
+
+    val dx = LEAF_REACH * side
     veinPaint.color = darken(color)
-    canvas.drawLine(50f + dx * 0.15f, y - 2f, 50f + dx * 0.8f, y - 13f, veinPaint)
+    canvas.drawLine(50f + dx * 0.15f, y - 2f, 50f + dx * 0.75f, y - 15f, veinPaint)
 
     canvas.restore()
   }
@@ -204,11 +207,14 @@ class MascotView(context: Context) : View(context) {
   }
 
   private fun leafPath(x: Float, y: Float, side: Float): Path {
-    val dx = 13f * side
+    // A full, rounded outer bulge tapering to a point, with a tighter inner edge close to the
+    // stem — a proper broad leaf silhouette rather than a thin needle, so each one stays
+    // legible as its own leaf even when a neighboring pair overlaps it.
+    val dx = LEAF_REACH * side
     return Path().apply {
       moveTo(x, y)
-      quadTo(x + dx * 0.4f, y - 9f, x + dx, y - 15f)
-      quadTo(x + dx * 0.25f, y - 10f, x, y)
+      quadTo(x + dx * 0.75f, y - 5f, x + dx, y - 18f)
+      quadTo(x + dx * 0.1f, y - 11f, x, y)
       close()
     }
   }
@@ -232,7 +238,10 @@ class MascotView(context: Context) : View(context) {
   }
 
   companion object {
-    private val LEAF_HEIGHTS = floatArrayOf(76f, 70f, 64f, 58f, 52f, 46f, 40f)
+    // Six pairs spaced widely enough that each one reads as its own leaf rather than
+    // blurring into a fern; the outline stroke in drawLeaf() keeps overlaps crisp too.
+    private val LEAF_HEIGHTS = floatArrayOf(77f, 69f, 61f, 53f, 45f, 37f)
+    private const val LEAF_REACH = 17f
 
     private val LEAF_GREEN = Color.parseColor("#6B9E52")
     private val LEAF_LIGHT = Color.parseColor("#9AC77E")
@@ -290,19 +299,24 @@ class MascotView(context: Context) : View(context) {
   private val stemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     color = STEM_BROWN
     style = Paint.Style.STROKE
-    strokeWidth = 4f
+    strokeWidth = 5f
     strokeCap = Paint.Cap.ROUND
   }
   private val stubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     color = STEM_BROWN
     style = Paint.Style.STROKE
-    strokeWidth = 2.2f
+    strokeWidth = 2.6f
     strokeCap = Paint.Cap.ROUND
   }
   private val leafPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val leafOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeWidth = 1.3f
+    strokeJoin = Paint.Join.ROUND
+  }
   private val veinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
-    strokeWidth = 0.8f
+    strokeWidth = 1f
     strokeCap = Paint.Cap.ROUND
     alpha = 140
   }
