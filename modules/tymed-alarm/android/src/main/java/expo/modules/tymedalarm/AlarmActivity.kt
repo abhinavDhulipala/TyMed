@@ -29,10 +29,9 @@ import java.util.Locale
  * cold JS context. Only Taken/Snooze can dismiss it (back button is disabled), matching a
  * real alarm clock rather than a normal dismissible notification.
  *
- * The Thyme mascot counts the ring down from a full 5:00 to 0:00, shedding a leaf pair every
- * fifth of that stretch — full leaves at the start, bare branches by the time 5 minutes have
- * passed — and gets visibly more anxious (faster shiver, worried face) the closer it gets.
- * Ringing past 5 minutes just holds at the barren, max-distress state rather than going idle.
+ * The Thyme mascot counts the ring down from a full 5:00 to 0:00, swaying gently the whole
+ * time while its smile eases into a frown as the countdown progresses. Ringing past 5 minutes
+ * just holds at the full-frown state rather than going idle.
  */
 class AlarmActivity : AppCompatActivity() {
   private var requestCode = -1
