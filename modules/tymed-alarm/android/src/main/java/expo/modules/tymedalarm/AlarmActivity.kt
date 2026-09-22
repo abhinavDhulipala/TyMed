@@ -5,7 +5,11 @@ import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,7 +18,6 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +28,10 @@ import java.util.Locale
  * full-screen-intent notification, so it reliably appears even over a locked screen with a
  * cold JS context. Only Taken/Snooze can dismiss it (back button is disabled), matching a
  * real alarm clock rather than a normal dismissible notification.
+ *
+ * The Thyme mascot counts the ring down from a full 5:00 to 0:00, swaying gently the whole
+ * time while its smile eases into a frown as the countdown progresses. Ringing past 5 minutes
+ * just holds at the full-frown state rather than going idle.
  */
 class AlarmActivity : AppCompatActivity() {
   private var requestCode = -1
@@ -33,11 +40,15 @@ class AlarmActivity : AppCompatActivity() {
 
   private val tickHandler = Handler(Looper.getMainLooper())
   private var ringingSinceMillis = 0L
-  private var elapsedLabel: TextView? = null
+  private var remainingLabel: TextView? = null
+  private var mascotView: MascotView? = null
 
   private val tickRunnable = object : Runnable {
     override fun run() {
-      elapsedLabel?.text = formatElapsed(System.currentTimeMillis() - ringingSinceMillis)
+      val elapsed = System.currentTimeMillis() - ringingSinceMillis
+      val remaining = (COUNTDOWN_MILLIS - elapsed).coerceAtLeast(0)
+      remainingLabel?.text = formatRemaining(remaining)
+      mascotView?.progress = elapsed.toFloat() / COUNTDOWN_MILLIS
       tickHandler.postDelayed(this, 1000)
     }
   }
@@ -64,11 +75,11 @@ class AlarmActivity : AppCompatActivity() {
     super.onDestroy()
   }
 
-  private fun formatElapsed(millis: Long): String {
+  private fun formatRemaining(millis: Long): String {
     val totalSeconds = (millis / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format(Locale.US, "Ringing for %d:%02d", minutes, seconds)
+    return String.format(Locale.US, "%d:%02d", minutes, seconds)
   }
 
   private fun showOverLockScreen() {
@@ -92,18 +103,17 @@ class AlarmActivity : AppCompatActivity() {
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       gravity = Gravity.CENTER
-      setBackgroundColor(Color.parseColor("#D97742"))
+      setBackgroundColor(Color.parseColor(BACKGROUND_GREEN))
       setPadding(64, 64, 64, 64)
     }
 
     root.addView(
-      ImageView(this).apply {
-        setImageResource(R.drawable.ic_mascot)
-        val size = (96 * resources.displayMetrics.density).toInt()
+      MascotView(this).apply {
+        val size = (200 * resources.displayMetrics.density).toInt()
         layoutParams = LinearLayout.LayoutParams(size, size).apply {
           gravity = Gravity.CENTER
         }
-      }
+      }.also { mascotView = it }
     )
 
     root.addView(
@@ -128,15 +138,15 @@ class AlarmActivity : AppCompatActivity() {
       )
     }
 
-    elapsedLabel = TextView(this).apply {
-      text = formatElapsed(0)
+    remainingLabel = TextView(this).apply {
+      text = formatRemaining(COUNTDOWN_MILLIS)
       setTextColor(Color.WHITE)
       alpha = 0.85f
       textSize = 15f
       gravity = Gravity.CENTER
       setPadding(0, 40, 0, 0)
     }
-    root.addView(elapsedLabel)
+    root.addView(remainingLabel)
 
     val buttonRow = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -144,23 +154,54 @@ class AlarmActivity : AppCompatActivity() {
       setPadding(0, 96, 0, 0)
     }
 
+    buttonRow.addView(pillButton("Taken", primary = true).apply { setOnClickListener { onTaken() } })
     buttonRow.addView(
-      Button(this).apply {
-        text = "Taken"
-        setOnClickListener { onTaken() }
-      }
-    )
-
-    buttonRow.addView(
-      Button(this).apply {
-        text = "Snooze"
-        setPadding(48, 0, 0, 0)
+      pillButton("Snooze", primary = false).apply {
+        layoutParams = (layoutParams as LinearLayout.LayoutParams).apply {
+          marginStart = (20 * resources.displayMetrics.density).toInt()
+        }
         setOnClickListener { onSnooze() }
       }
     )
 
     root.addView(buttonRow)
     return root
+  }
+
+  /**
+   * A rounded pill button in place of the stock gray Material button, which read as a
+   * placeholder rather than a finished screen. Taken is a solid cream fill (the confident,
+   * "done" action); Snooze is a ghost outline (present but visually secondary).
+   */
+  private fun pillButton(label: String, primary: Boolean): Button {
+    val density = resources.displayMetrics.density
+    val corner = 28f * density
+    val fill = GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      cornerRadius = corner
+      if (primary) {
+        setColor(Color.parseColor("#FFFBF3"))
+      } else {
+        setColor(Color.TRANSPARENT)
+        setStroke((1.5f * density).toInt(), Color.WHITE)
+      }
+    }
+    val rippleColor = if (primary) Color.parseColor("#332E4A32") else Color.parseColor("#33FFFFFF")
+    return Button(this).apply {
+      text = label
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = 16f
+      setTextColor(if (primary) Color.parseColor(BACKGROUND_GREEN) else Color.WHITE)
+      background = RippleDrawable(ColorStateList.valueOf(rippleColor), fill, null)
+      stateListAnimator = null
+      val hPad = (30 * density).toInt()
+      val vPad = (16 * density).toInt()
+      setPadding(hPad, vPad, hPad, vPad)
+      layoutParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT
+      )
+    }
   }
 
   private fun onTaken() {
@@ -248,5 +289,7 @@ class AlarmActivity : AppCompatActivity() {
 
   companion object {
     const val SNOOZE_REQUEST_CODE_OFFSET = 500_000
+    private const val COUNTDOWN_MILLIS = 5 * 60 * 1000L
+    private const val BACKGROUND_GREEN = "#1F3325"
   }
 }
