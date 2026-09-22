@@ -25,11 +25,11 @@ function mapLog(row: LogRow): IntakeLog {
   };
 }
 
-/** Lazily creates today's pending log rows for every enabled schedule that recurs today and
- * doesn't have a row yet. */
-export async function ensureTodayLogs(): Promise<void> {
+/** Lazily creates a date's pending log rows for every enabled schedule that recurs on it and
+ * doesn't have a row yet. Works for any date — past, today, or future — so a day's doses exist
+ * as soon as it's viewed, not just once it becomes "today". */
+export async function ensureLogsForDate(dateStr: string): Promise<void> {
   const db = await getDb();
-  const today = todayDateString();
   const schedules = await db.getAllAsync<{
     id: number;
     medication_id: number;
@@ -50,14 +50,14 @@ export async function ensureTodayLogs(): Promise<void> {
         startDate: schedule.start_date,
         endDate: schedule.end_date,
       },
-      today
+      dateStr
     );
     if (!active) continue;
 
     const existing = await db.getFirstAsync<{ id: number }>(
       'SELECT id FROM intake_logs WHERE schedule_id = ? AND scheduled_date = ?',
       schedule.id,
-      today
+      dateStr
     );
     if (!existing) {
       await db.runAsync(
@@ -65,7 +65,7 @@ export async function ensureTodayLogs(): Promise<void> {
          VALUES (?, ?, ?, ?, 'pending')`,
         schedule.medication_id,
         schedule.id,
-        today,
+        dateStr,
         schedule.time_of_day
       );
     }
@@ -90,9 +90,7 @@ function mapDose(row: DoseRow): DoseWithMedication {
 /** All doses scheduled for one specific date — including today, present and future times alike.
  * The home screen is just this called with today's date: a day is a day, today isn't special. */
 export async function getDosesForDate(dateStr: string): Promise<DoseWithMedication[]> {
-  if (dateStr === todayDateString()) {
-    await ensureTodayLogs();
-  }
+  await ensureLogsForDate(dateStr);
   const db = await getDb();
   const rows = await db.getAllAsync<DoseRow>(
     `${DOSE_SELECT} WHERE intake_logs.scheduled_date = ? ORDER BY intake_logs.scheduled_time`,
@@ -131,7 +129,7 @@ export async function setLogTakenAt(logId: number, takenAtIso: string): Promise<
 
 /** Resolves today's log row for a given schedule, creating it if needed (used from the notification handler). */
 export async function findOrCreateTodayLogForSchedule(scheduleId: number): Promise<IntakeLog> {
-  await ensureTodayLogs();
+  await ensureLogsForDate(todayDateString());
   const db = await getDb();
   const today = todayDateString();
   const row = await db.getFirstAsync<LogRow>(
