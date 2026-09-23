@@ -3,12 +3,15 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextIn
 import Constants from 'expo-constants';
 import {
   DEFAULT_FOLLOW_UP_MINUTES,
+  getAiAssistantEnabled,
   getFollowUpMinutes,
   getUse24HourFormat,
+  setAiAssistantEnabled,
   setFollowUpMinutes,
   setUse24HourFormat,
 } from '@/src/db/settings';
 import { setNativeFollowUpMinutes } from '@/src/native/alarmModule';
+import { isNativeAiAvailable } from '@/src/native/aiModule';
 import { Mascot } from '@/src/components/Mascot';
 import { notifyTimeFormatChanged } from '@/src/hooks/useTimeFormat';
 import { colors, radii, spacing } from '@/src/theme';
@@ -21,12 +24,19 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [is24Hour, setIs24Hour] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const aiAvailable = isNativeAiAvailable();
 
   useEffect(() => {
     (async () => {
-      const [minutes, use24Hour] = await Promise.all([getFollowUpMinutes(), getUse24HourFormat()]);
+      const [minutes, use24Hour, aiAssistantEnabled] = await Promise.all([
+        getFollowUpMinutes(),
+        getUse24HourFormat(),
+        getAiAssistantEnabled(),
+      ]);
       setMinutesInput(String(minutes));
       setIs24Hour(use24Hour);
+      setAiEnabled(aiAssistantEnabled);
       setLoading(false);
     })();
   }, []);
@@ -51,6 +61,11 @@ export default function SettingsScreen() {
     await setUse24HourFormat(value);
   };
 
+  const handleToggleAiAssistant = async (value: boolean) => {
+    setAiEnabled(value);
+    await setAiAssistantEnabled(value);
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
@@ -69,6 +84,28 @@ export default function SettingsScreen() {
             value={is24Hour}
             onValueChange={handleToggle24Hour}
             disabled={loading}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>AI Assistant</Text>
+      <View style={styles.card}>
+        <View style={styles.switchRow}>
+          <View style={styles.switchLabelGroup}>
+            <Text style={styles.label}>Chat assistant</Text>
+            <Text style={styles.help}>
+              {aiAvailable
+                ? 'Ask about your medications, add one, or mark a dose taken by chatting — powered entirely by ' +
+                  "Android's on-device Gemini Nano. Nothing leaves your device."
+                : "Not available on this device — needs Android's on-device Gemini Nano (AICore)."}
+            </Text>
+          </View>
+          <Switch
+            value={aiEnabled}
+            onValueChange={handleToggleAiAssistant}
+            disabled={loading || !aiAvailable}
             trackColor={{ false: colors.border, true: colors.primary }}
             thumbColor="#FFFFFF"
           />

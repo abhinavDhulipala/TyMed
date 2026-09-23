@@ -1,0 +1,27 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.tymedai'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.tymedai"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation 'androidx.appcompat:appcompat:1.7.1'
+  implementation 'androidx.core:core-ktx:1.13.1'
+  // AICore's own AAR manifest declares minSdkVersion 31 (Android 12) — far above this app's
+  // minSdkVersion 24. See plugins/withAiCoreManifestOverride.js for the matching manifest-merger
+  // override, and TymedAiModule.kt for the runtime SDK_INT gate that makes that safe.
+  implementation 'com.google.ai.edge.aicore:aicore:0.0.1-exp02'
+}
