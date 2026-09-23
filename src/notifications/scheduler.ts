@@ -1,5 +1,9 @@
 import { Platform } from 'react-native';
-import { setScheduleNotificationIds, listAllEnabledSchedulesWithMedication } from '@/src/db/schedules';
+import {
+  setScheduleNotificationIds,
+  listAllEnabledSchedulesWithMedication,
+  type ScheduleWithMedication,
+} from '@/src/db/schedules';
 import { cancelNativeAlarm, scheduleNativeAlarm } from '@/src/native/alarmModule';
 import type { RecurrenceType, Schedule } from '@/src/types';
 import { todayDateString } from '@/src/utils/date';
@@ -39,6 +43,11 @@ function nextOccurrenceMillis(hour: number, minute: number): number {
     next.setDate(next.getDate() + 1);
   }
   return next.getTime();
+}
+
+function tomorrowOccurrenceMillis(hour: number, minute: number): number {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, hour, minute, 0, 0).getTime();
 }
 
 /** Arms (or re-arms) the daily native alarm for a schedule. Android only. The native chain
@@ -141,6 +150,44 @@ export async function cancelDoseReminders(schedules: Pick<Schedule, 'id' | 'noti
   } catch (error) {
     console.warn('[notifications] failed to cancel dose reminders:', error);
   }
+}
+
+/** Stops today's already-armed Android alarm from ringing (e.g. the dose was just marked
+ * taken/skipped ahead of its alarm time) without breaking the recurring chain: the daily
+ * alarm re-arms *itself* on each fire (see AlarmReceiver.kt), so simply cancelling it would
+ * silently kill tomorrow's reminder too. Re-arming for tomorrow's occurrence instead keeps
+ * the chain alive. iOS doesn't need this — its notification handler re-checks intake_logs
+ * status at render time (see src/notifications/setup.ts). No-op past the schedule's end date. */
+export async function skipTodaysDoseReminder(schedule: ScheduleWithMedication): Promise<void> {
+  if (Platform.OS !== 'android') return;
+
+  cancelNativeAlarm(schedule.id);
+  cancelNativeAlarm(schedule.id + SNOOZE_REQUEST_CODE_OFFSET);
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Mirrors AlarmReceiver.rearmNextDay's own end-date guard: don't arm a day the chain
+  // wouldn't have rearmed itself into anyway.
+  if (schedule.endDate && todayDateString(tomorrow) > schedule.endDate) return;
+
+  const [hourStr, minuteStr] = schedule.timeOfDay.split(':');
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr);
+  scheduleNativeAlarm({
+    triggerAtMillis: tomorrowOccurrenceMillis(hour, minute),
+    requestCode: schedule.id,
+    scheduleId: schedule.id,
+    medicationId: schedule.medicationId,
+    medicationName: schedule.medicationName,
+    dosage: schedule.dosage,
+    isPrimary: true,
+    hour,
+    minute,
+    recurrenceType: schedule.recurrenceType,
+    daysOfWeek: encodeDaysOfWeek(schedule.daysOfWeek),
+    startDate: schedule.startDate ?? '',
+    endDate: schedule.endDate ?? '',
+  });
 }
 
 /** Re-arms every enabled schedule's native alarm. Android only — call on app start to cover
