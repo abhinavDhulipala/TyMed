@@ -57,6 +57,19 @@ export interface ScheduleWithMedication extends Schedule {
   dosage: string | null;
 }
 
+/** A single schedule joined with its medication (for re-arming/skipping its native alarm). */
+export async function getScheduleWithMedication(id: number): Promise<ScheduleWithMedication | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<ScheduleRow & { name: string; dosage: string | null }>(
+    `SELECT schedules.*, medications.name AS name, medications.dosage AS dosage
+     FROM schedules
+     JOIN medications ON medications.id = schedules.medication_id
+     WHERE schedules.id = ?`,
+    id
+  );
+  return row ? { ...mapSchedule(row), medicationName: row.name, dosage: row.dosage } : null;
+}
+
 /** Every enabled schedule across all medications, for re-arming native alarms on app start. */
 export async function listAllEnabledSchedulesWithMedication(): Promise<ScheduleWithMedication[]> {
   const db = await getDb();
