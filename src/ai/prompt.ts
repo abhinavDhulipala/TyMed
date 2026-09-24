@@ -6,19 +6,50 @@ export interface HistoryEntry {
   content: string;
 }
 
+export interface TrackedMedication {
+  name: string;
+  dosage: string | null;
+}
+
+// Worked examples: on-device evals showed Gemini Nano reaching for add_medication to change an
+// existing medication, inventing arguments (pill counts, "as directed"), and answering "I've
+// marked it" without calling a tool. A few concrete input -> call pairs fix that far more
+// reliably than more rules.
+const EXAMPLES = [
+  ['I took my aspirin', '{"tool": "mark_dose_taken", "arguments": {"medicationName": "aspirin"}}'],
+  [
+    'Make ibuprofen twice a day at 9am and 9pm for 5 days',
+    '{"tool": "update_medication_schedule", "arguments": {"medicationName": "ibuprofen", "times": ["09:00", "21:00"], "durationDays": 5}}',
+  ],
+  [
+    'Add vitamin D 1000 IU at 8am',
+    '{"tool": "add_medication", "arguments": {"name": "vitamin D", "dosage": "1000 IU", "times": ["08:00"]}}',
+  ],
+  ["What's left today?", '{"tool": "get_todays_doses", "arguments": {}}'],
+];
+
 // generateContent() is a plain stateless prompt->text call with no native session of its own, so
 // the full instructions + transcript are rebuilt from scratch on every turn.
-function systemPreamble(today: string): string {
+function systemPreamble(today: string, medications: TrackedMedication[]): string {
   const toolDocs = Object.values(TOOL_DESCRIPTIONS)
     .map((desc) => `- ${desc}`)
     .join('\n');
+  const tracked = medications.length
+    ? medications.map((m) => (m.dosage ? `${m.name} ${m.dosage}` : m.name)).join(', ')
+    : 'none yet';
+  const examples = EXAMPLES.map(([user, call]) => `User: ${user}\nAssistant: ${call}`).join('\n');
 
   return (
-    `You are TyMed's medication assistant, running fully on-device. Today's date is ${today}.\n\n` +
+    `You are TyMed's medication assistant, running fully on-device. Today's date is ${today}.\n` +
+    `The user already tracks these medications: ${tracked}.\n\n` +
     `You can call these tools:\n${toolDocs}\n\n` +
     'Respond with ONLY a JSON object: either {"tool": "<tool_name>", "arguments": {...}} to call a tool, or ' +
     '{"reply": "<message to show the user>"} to reply directly. No text outside the JSON, no markdown code fences.\n' +
-    'Only set confirmed:true on a tool call immediately after the user has explicitly agreed to what you asked them.'
+    'To change the schedule of a medication the user already tracks, use update_medication_schedule, never ' +
+    'add_medication. Only pass arguments the user actually said — never make up a dosage or other details.\n' +
+    'Anything that changes data is confirmed with the user by the app. Never tell the user something was added, ' +
+    'changed, or marked unless a tool result says saved:true.\n\n' +
+    `Examples:\n${examples}`
   );
 }
 
@@ -27,7 +58,7 @@ function systemPreamble(today: string): string {
 // chat.
 const MAX_HISTORY_ENTRIES = 12;
 
-export function buildPrompt(history: HistoryEntry[]): string {
+export function buildPrompt(history: HistoryEntry[], medications: TrackedMedication[] = []): string {
   const trimmed = history.slice(-MAX_HISTORY_ENTRIES);
   const transcript = trimmed
     .map((entry) => {
@@ -37,5 +68,5 @@ export function buildPrompt(history: HistoryEntry[]): string {
     })
     .join('\n');
 
-  return `${systemPreamble(todayDateString())}\n\n${transcript}\n\nAssistant:`;
+  return `${systemPreamble(todayDateString(), medications)}\n\n${transcript}\n\nAssistant:`;
 }

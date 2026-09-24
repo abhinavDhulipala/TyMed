@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- No components or permissions of our own — the com.google.ai.edge.aicore AAR dependency
+  <!-- No components or permissions of our own — the com.google.mlkit:genai-prompt AAR dependency
        brings its own manifest (BIND_SERVICE permission + a <queries> entry for the AICore
        system app), merged in automatically via the Gradle dependency in build.gradle. -->
 </manifest>

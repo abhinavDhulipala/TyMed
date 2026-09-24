@@ -11,6 +11,11 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    // Off unless built with -PtymedAiEval=true — see the eval bridge in TymedAiModule.kt.
+    buildConfigField "boolean", "AI_EVAL_BRIDGE", (project.findProperty("tymedAiEval") == "true").toString()
+  }
+  buildFeatures {
+    buildConfig true
   }
   lintOptions {
     abortOnError false
@@ -20,8 +25,10 @@ android {
 dependencies {
   implementation 'androidx.appcompat:appcompat:1.7.1'
   implementation 'androidx.core:core-ktx:1.13.1'
-  // AICore's own AAR manifest declares minSdkVersion 31 (Android 12) — far above this app's
-  // minSdkVersion 24. See plugins/withAiCoreManifestOverride.js for the matching manifest-merger
-  // override, and TymedAiModule.kt for the runtime SDK_INT gate that makes that safe.
-  implementation 'com.google.ai.edge.aicore:aicore:0.0.1-exp02'
+  // ML Kit GenAI's AAR manifests (genai-prompt, genai-common) declare minSdkVersion 26 — above
+  // this app's minSdkVersion 24. See plugins/withAiCoreManifestOverride.js for the matching
+  // manifest-merger override, and TymedAiModule.kt for the runtime SDK_INT gate that makes that safe.
+  // Pinned to beta2: beta3+ are compiled with Kotlin 2.3, which this project's Kotlin (2.1, set
+  // by React Native/Expo) can't read. Bump once the app's Kotlin version catches up.
+  implementation 'com.google.mlkit:genai-prompt:1.0.0-beta2'
 }

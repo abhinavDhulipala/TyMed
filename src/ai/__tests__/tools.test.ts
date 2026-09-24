@@ -16,12 +16,20 @@ jest.mock('@/src/db/client', () => ({
 // logic, so it's stubbed out and asserted on by call count instead.
 jest.mock('@/src/notifications/scheduler', () => ({
   scheduleDoseReminders: jest.fn().mockResolvedValue([]),
+  cancelDoseReminders: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { addMedication, getTodaysDoses, markDoseTaken, runTool } from '../tools';
-import { scheduleDoseReminders } from '@/src/notifications/scheduler';
+import {
+  addMedication,
+  endDateForDuration,
+  getTodaysDoses,
+  markDoseTaken,
+  runTool,
+  updateMedicationSchedule,
+} from '../tools';
+import { cancelDoseReminders, scheduleDoseReminders } from '@/src/notifications/scheduler';
 import { createMedication, getMedication } from '@/src/db/medications';
-import { createSchedule, type RecurrenceInput } from '@/src/db/schedules';
+import { createSchedule, listSchedulesForMedication, type RecurrenceInput } from '@/src/db/schedules';
 import { getDosesForDate } from '@/src/db/logs';
 import type { MedicationInput } from '@/src/types';
 
@@ -37,9 +45,25 @@ beforeEach(async () => {
 });
 
 describe('addMedication', () => {
-  it('creates the medication and one schedule per requested time', async () => {
+  it('asks for confirmation with a summary before writing anything', async () => {
     const result = await addMedication({ name: 'Ibuprofen', dosage: '200mg', times: ['08:00', '20:00'] });
-    expect(result).toEqual({ status: 'added', medicationName: 'Ibuprofen', times: ['08:00', '20:00'] });
+    expect(result).toEqual({
+      status: 'needs_confirmation',
+      medicationName: 'Ibuprofen',
+      dosage: '200mg',
+      times: ['08:00', '20:00'],
+      endDate: null,
+      similar: [],
+    });
+
+    const doses = await getDosesForDate(todayDateString());
+    expect(doses).toHaveLength(0);
+    expect(scheduleDoseReminders).not.toHaveBeenCalled();
+  });
+
+  it('creates the medication and one schedule per requested time once confirmed', async () => {
+    const result = await addMedication({ name: 'Ibuprofen', dosage: '200mg', times: ['08:00', '20:00'], confirmed: true });
+    expect(result).toEqual({ status: 'added', medicationName: 'Ibuprofen', times: ['08:00', '20:00'], endDate: null });
 
     const doses = await getDosesForDate(todayDateString());
     expect(doses.map((d) => d.scheduledTime).sort()).toEqual(['08:00', '20:00']);
@@ -47,8 +71,15 @@ describe('addMedication', () => {
   });
 
   it('defaults to a single 08:00 daily schedule when no times are given', async () => {
-    const result = await addMedication({ name: 'Vitamin D' });
-    expect(result).toEqual({ status: 'added', medicationName: 'Vitamin D', times: ['08:00'] });
+    const result = await addMedication({ name: 'Vitamin D', confirmed: true });
+    expect(result).toEqual({ status: 'added', medicationName: 'Vitamin D', times: ['08:00'], endDate: null });
+  });
+
+  it('turns durationDays into an inclusive end date on every schedule', async () => {
+    const result = await addMedication({ name: 'Amoxicillin', times: ['08:00', '20:00'], durationDays: 7, confirmed: true });
+    const endDate = endDateForDuration(7);
+    expect(result).toEqual({ status: 'added', medicationName: 'Amoxicillin', times: ['08:00', '20:00'], endDate });
+    expect(scheduleDoseReminders).toHaveBeenCalledWith(expect.objectContaining({ endDate }));
   });
 
   it('rejects a malformed time before creating anything', async () => {
@@ -58,26 +89,148 @@ describe('addMedication', () => {
   });
 
   it('reports an exact duplicate instead of creating a second medication', async () => {
-    await addMedication({ name: 'Metformin', dosage: '500mg' });
-    const result = await addMedication({ name: 'Metformin', dosage: '500mg' });
+    await addMedication({ name: 'Metformin', dosage: '500mg', confirmed: true });
+    const result = await addMedication({ name: 'Metformin', dosage: '500mg', confirmed: true });
     expect(result).toEqual({ status: 'exists', medicationName: 'Metformin' });
 
     const doses = await getDosesForDate(todayDateString());
     expect(doses).toHaveLength(1);
   });
 
-  it('asks for confirmation on a same-name different-dosage match, then adds once confirmed', async () => {
-    await addMedication({ name: 'Metformin', dosage: '500mg' });
+  it('treats an add of an already-tracked medication with new times as a confirmed schedule change', async () => {
+    await addMedication({ name: 'Ibuprofen', dosage: '200 mg', confirmed: true });
+
+    const args = { name: 'ibuprofen', dosage: '200 mg', times: ['08:00', '20:00'], durationDays: 7 };
+    const pending = await addMedication(args);
+    expect(pending).toEqual({
+      status: 'needs_confirmation',
+      existing: true,
+      medicationName: 'Ibuprofen',
+      before: { times: ['08:00'], endDate: null },
+      after: { times: ['08:00', '20:00'], endDate: endDateForDuration(7) },
+    });
+    expect((await getDosesForDate(todayDateString())).map((d) => d.scheduledTime)).toEqual(['08:00']);
+
+    const done = await addMedication({ ...args, confirmed: true });
+    expect(done.status).toBe('updated');
+    expect((await getDosesForDate(todayDateString())).map((d) => d.scheduledTime).sort()).toEqual(['08:00', '20:00']);
+  });
+
+  it('lists a same-name different-dosage match in the confirmation, then adds once confirmed', async () => {
+    await addMedication({ name: 'Metformin', dosage: '500mg', confirmed: true });
 
     const needsConfirmation = await addMedication({ name: 'Metformin', dosage: '1000mg' });
     expect(needsConfirmation.status).toBe('needs_confirmation');
+    if ('similar' in needsConfirmation) {
+      expect(needsConfirmation.similar).toEqual([{ name: 'Metformin', dosage: '500mg', form: null }]);
+    }
 
     const confirmed = await addMedication({ name: 'Metformin', dosage: '1000mg', confirmed: true });
-    expect(confirmed).toEqual({ status: 'added', medicationName: 'Metformin', times: ['08:00'] });
+    expect(confirmed).toEqual({ status: 'added', medicationName: 'Metformin', times: ['08:00'], endDate: null });
   });
 
   it('rejects a blank name', async () => {
     await expect(addMedication({ name: '   ' })).rejects.toThrow();
+  });
+});
+
+describe('endDateForDuration', () => {
+  it('counts today as day one and crosses month boundaries', () => {
+    expect(endDateForDuration(1, new Date(2026, 8, 24))).toBe('2026-09-24');
+    expect(endDateForDuration(7, new Date(2026, 8, 24))).toBe('2026-09-30');
+    expect(endDateForDuration(8, new Date(2026, 8, 24))).toBe('2026-10-01');
+  });
+});
+
+describe('updateMedicationSchedule', () => {
+  async function seedIbuprofen() {
+    const medicationId = await createMedication(medicationInput({ name: 'Ibuprofen', dosage: '200 mg' }));
+    await createSchedule(medicationId, '08:00', DAILY);
+    return medicationId;
+  }
+
+  it('asks for confirmation with a before/after summary without writing', async () => {
+    const medicationId = await seedIbuprofen();
+
+    const result = await updateMedicationSchedule({ medicationName: 'ibuprofen', times: ['20:00', '08:00'], durationDays: 7 });
+    expect(result).toEqual({
+      status: 'needs_confirmation',
+      medicationName: 'Ibuprofen',
+      before: { times: ['08:00'], endDate: null },
+      after: { times: ['08:00', '20:00'], endDate: endDateForDuration(7) },
+    });
+
+    const schedules = await listSchedulesForMedication(medicationId);
+    expect(schedules.map((s) => s.timeOfDay)).toEqual(['08:00']);
+  });
+
+  it('adds the new time slot and sets the end date once confirmed, keeping the existing slot', async () => {
+    const medicationId = await seedIbuprofen();
+    const [original] = await listSchedulesForMedication(medicationId);
+
+    const result = await updateMedicationSchedule({
+      medicationName: 'Ibuprofen',
+      times: ['08:00', '20:00'],
+      durationDays: 7,
+      confirmed: true,
+    });
+    expect(result.status).toBe('updated');
+
+    const schedules = await listSchedulesForMedication(medicationId);
+    expect(schedules.map((s) => s.timeOfDay).sort()).toEqual(['08:00', '20:00']);
+    expect(schedules.every((s) => s.endDate === endDateForDuration(7))).toBe(true);
+    // The kept 08:00 slot is updated in place, so its dose history survives.
+    expect(schedules.find((s) => s.timeOfDay === '08:00')?.id).toBe(original.id);
+    expect(scheduleDoseReminders).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes dropped time slots and cancels their reminders', async () => {
+    const medicationId = await seedIbuprofen();
+    await createSchedule(medicationId, '20:00', DAILY);
+
+    await updateMedicationSchedule({ medicationName: 'Ibuprofen', times: ['08:00'], confirmed: true });
+
+    const schedules = await listSchedulesForMedication(medicationId);
+    expect(schedules.map((s) => s.timeOfDay)).toEqual(['08:00']);
+    expect(cancelDoseReminders).toHaveBeenCalledWith([expect.objectContaining({ timeOfDay: '20:00' })]);
+  });
+
+  it('keeps the current times when only a duration is given', async () => {
+    await seedIbuprofen();
+    const result = await updateMedicationSchedule({ medicationName: 'Ibuprofen', durationDays: 3 });
+    expect(result).toEqual(
+      expect.objectContaining({ status: 'needs_confirmation', after: { times: ['08:00'], endDate: endDateForDuration(3) } })
+    );
+  });
+
+  it('reports no_change when nothing would differ', async () => {
+    await seedIbuprofen();
+    const result = await updateMedicationSchedule({ medicationName: 'Ibuprofen', times: ['08:00'], confirmed: true });
+    expect(result).toEqual({ status: 'no_change', medicationName: 'Ibuprofen' });
+  });
+
+  it('reports not_found with the tracked medication names', async () => {
+    await seedIbuprofen();
+    const result = await updateMedicationSchedule({ medicationName: 'Aspirin', times: ['09:00'] });
+    expect(result).toEqual({ status: 'not_found', medicationName: 'Aspirin', medications: ['Ibuprofen'] });
+  });
+
+  it('reports ambiguous between strengths, then resolves once a dosage is given', async () => {
+    await seedIbuprofen();
+    const otherId = await createMedication(medicationInput({ name: 'Ibuprofen', dosage: '400 mg' }));
+    await createSchedule(otherId, '12:00', DAILY);
+
+    const ambiguous = await updateMedicationSchedule({ medicationName: 'Ibuprofen', times: ['09:00'] });
+    expect(ambiguous.status).toBe('ambiguous');
+
+    const resolved = await updateMedicationSchedule({ medicationName: 'Ibuprofen', dosage: '400 MG', times: ['09:00'] });
+    expect(resolved).toEqual(expect.objectContaining({ status: 'needs_confirmation', before: { times: ['12:00'], endDate: null } }));
+  });
+
+  it('rejects a call with nothing to change or a malformed time', async () => {
+    await seedIbuprofen();
+    await expect(updateMedicationSchedule({ medicationName: 'Ibuprofen' })).rejects.toThrow();
+    await expect(updateMedicationSchedule({ medicationName: 'Ibuprofen', times: ['8pm'] })).rejects.toThrow();
   });
 });
 

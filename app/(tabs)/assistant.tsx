@@ -1,20 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { EmptyState } from '@/src/components/EmptyState';
 import { Mascot } from '@/src/components/Mascot';
 import { getAiAssistantEnabled } from '@/src/db/settings';
 import { isNativeAiAvailable, prepareNativeAi } from '@/src/native/aiModule';
-import { runTurn } from '@/src/ai/orchestrator';
+import { runTurn, type PendingAction } from '@/src/ai/orchestrator';
 import type { HistoryEntry } from '@/src/ai/prompt';
 import { colors, radii, spacing } from '@/src/theme';
 
@@ -32,24 +33,39 @@ export default function AssistantScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const historyRef = useRef<HistoryEntry[]>([]);
+  const pendingRef = useRef<PendingAction | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const headerHeight = useHeaderHeight();
 
-  useEffect(() => {
-    (async () => {
-      if (!isNativeAiAvailable()) {
-        setPhase('unavailable');
-        return;
-      }
-      const enabled = await getAiAssistantEnabled();
-      if (!enabled) {
-        setPhase('disabled');
-        return;
-      }
-      setPhase('preparing');
-      const ready = await prepareNativeAi();
-      setPhase(ready ? 'ready' : 'prepareFailed');
-    })();
+  const phaseRef = useRef<Phase>('checking');
+
+  const updatePhase = useCallback((next: Phase) => {
+    phaseRef.current = next;
+    setPhase(next);
   }, []);
+
+  // Tabs stay mounted, so this re-checks on every focus — otherwise toggling the assistant on in
+  // Settings after this tab was first opened leaves it stuck on "off" until an app restart.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        if (!isNativeAiAvailable()) {
+          updatePhase('unavailable');
+          return;
+        }
+        const enabled = await getAiAssistantEnabled();
+        if (!enabled) {
+          updatePhase('disabled');
+          return;
+        }
+        // Already set up (or mid-setup) from an earlier visit — don't re-run prepare on every focus.
+        if (phaseRef.current === 'ready' || phaseRef.current === 'preparing') return;
+        updatePhase('preparing');
+        const ready = await prepareNativeAi();
+        updatePhase(ready ? 'ready' : 'prepareFailed');
+      })();
+    }, [updatePhase])
+  );
 
   const handleSend = async () => {
     const text = input.trim();
@@ -58,8 +74,9 @@ export default function AssistantScreen() {
     setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text }]);
     setSending(true);
     try {
-      const result = await runTurn(text, historyRef.current);
+      const result = await runTurn(text, historyRef.current, pendingRef.current);
       historyRef.current = result.history;
+      pendingRef.current = result.pending;
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: result.reply }]);
     } catch {
       setMessages((prev) => [
@@ -122,7 +139,11 @@ export default function AssistantScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // 'padding' on Android too: the app draws edge-to-edge (enforced from Android 15), where the
+    // window no longer resizes for the keyboard. KeyboardAvoidingView measures itself relative to
+    // this screen but the keyboard in window coordinates, so it needs the header (+ status bar)
+    // height as an offset — without it the input row still ends up partly behind the keyboard.
+    <KeyboardAvoidingView style={styles.container} behavior="padding" keyboardVerticalOffset={headerHeight}>
       <FlatList
         ref={listRef}
         style={styles.list}
