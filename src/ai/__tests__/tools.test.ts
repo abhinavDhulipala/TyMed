@@ -13,10 +13,13 @@ jest.mock('@/src/db/client', () => ({
 }));
 
 // scheduleDoseReminders touches native alarms/notifications — irrelevant to tools.ts's own
-// logic, so it's stubbed out and asserted on by call count instead.
+// logic, so it's stubbed out and asserted on by call count instead. skipTodaysDoseReminder is
+// pulled in transitively through db/actions.ts's markDose (Android alarm suppression) and needs
+// stubbing for the same reason, even though tools.ts itself never calls it directly.
 jest.mock('@/src/notifications/scheduler', () => ({
   scheduleDoseReminders: jest.fn().mockResolvedValue([]),
   cancelDoseReminders: jest.fn().mockResolvedValue(undefined),
+  skipTodaysDoseReminder: jest.fn().mockResolvedValue(undefined),
 }));
 
 import {

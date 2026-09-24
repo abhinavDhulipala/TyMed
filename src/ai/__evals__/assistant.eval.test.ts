@@ -19,6 +19,7 @@ jest.mock('@/src/db/client', () => ({
 jest.mock('@/src/notifications/scheduler', () => ({
   scheduleDoseReminders: jest.fn().mockResolvedValue([]),
   cancelDoseReminders: jest.fn().mockResolvedValue(undefined),
+  skipTodaysDoseReminder: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@/src/native/aiModule', () => ({
