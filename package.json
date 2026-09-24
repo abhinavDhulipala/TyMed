@@ -38,7 +38,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:ai": "jest --testPathIgnorePatterns /node_modules/ /android/ /ios/ --testTimeout 600000 --runInBand src/ai/__evals__"
   },
   "private": true,
   "jest": {
@@ -46,7 +47,8 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/android/",
-      "/ios/"
+      "/ios/",
+      "/__evals__/"
     ]
   }
 }

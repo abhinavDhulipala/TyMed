@@ -37,6 +37,7 @@
       ],
       "@sentry/react-native",
       "./plugins/withReleaseSigning.js",
+      "./plugins/withAiCoreManifestOverride.js",
       [
         "expo-splash-screen",
         {

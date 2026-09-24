@@ -27,6 +27,10 @@ export default function TabsLayout() {
         name="medications"
         options={{ title: 'Medications', headerShown: false, tabBarIcon: TabIcon('medkit-outline') }}
       />
+      <Tabs.Screen
+        name="assistant"
+        options={{ title: 'Assistant', tabBarIcon: TabIcon('chatbubble-ellipses-outline') }}
+      />
       <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: TabIcon('settings-outline') }} />
     </Tabs>
   );
