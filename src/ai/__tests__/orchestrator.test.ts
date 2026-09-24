@@ -85,6 +85,37 @@ describe('confirmation flow', () => {
     expect(result.reply).toBe('Change Ibuprofen from 8:00 AM every day to 8:00 AM and 8:00 PM every day?');
   });
 
+  it('drops a durationDays the model invented when the user never mentioned a duration', async () => {
+    mockGenerate.mockResolvedValueOnce(
+      toolCall('update_medication_schedule', { medicationName: 'Ibuprofen', times: ['08:00', '20:00'], durationDays: 7 })
+    );
+    mockRunTool.mockResolvedValueOnce({
+      status: 'needs_confirmation',
+      medicationName: 'Ibuprofen',
+      before: { times: ['08:00'], endDate: null },
+      after: { times: ['08:00', '20:00'], endDate: null },
+    });
+
+    await runTurn('make ibuprofen twice a day at 8am and 8pm', []);
+
+    expect(mockRunTool).toHaveBeenCalledWith('update_medication_schedule', { medicationName: 'Ibuprofen', times: ['08:00', '20:00'] });
+  });
+
+  it('keeps durationDays when the user did mention a duration', async () => {
+    mockGenerate.mockResolvedValueOnce(
+      toolCall('update_medication_schedule', { medicationName: 'Ibuprofen', times: ['08:00', '20:00'], durationDays: 7 })
+    );
+    mockRunTool.mockResolvedValueOnce(ADD_PENDING);
+
+    await runTurn('make ibuprofen twice a day for 7 days', []);
+
+    expect(mockRunTool).toHaveBeenCalledWith('update_medication_schedule', {
+      medicationName: 'Ibuprofen',
+      times: ['08:00', '20:00'],
+      durationDays: 7,
+    });
+  });
+
   it('includes the tracked medications in the prompt', async () => {
     mockGenerate.mockResolvedValueOnce(reply('Hi!'));
     await runTurn('hello', []);

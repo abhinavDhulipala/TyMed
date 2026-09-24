@@ -17,6 +17,20 @@ const UNBACKED_CLAIM_CORRECTION =
 // as taken" without calling any tool.
 const WRITE_CLAIM = /\b(i'?ve|i have|i)\s+(just\s+|now\s+)?(added|marked|updated|changed|saved|scheduled|set|removed)\b/i;
 
+// A digit before day(s)/week(s)/month(s) — "for 7 days", "in 2 weeks" — but not "every day" or
+// "twice a day", which are frequency, not duration.
+const DURATION_MENTION = /\b\d+\s*-?\s*(day|days|week|weeks|month|months)\b/i;
+
+/** Strips a durationDays the user's own message doesn't support. On-device evals showed Gemini
+ * Nano copying durationDays from the prompt's worked example even when nothing about how long
+ * the change should run was said — a worked example alone didn't fix it reliably enough for
+ * health data, so it's enforced here rather than trusted from the model. */
+function stripUnmentionedDuration(args: Record<string, unknown>, userMessage: string): Record<string, unknown> {
+  if (args.durationDays === undefined || DURATION_MENTION.test(userMessage)) return args;
+  const { durationDays: _dropped, ...rest } = args;
+  return rest;
+}
+
 /** A write the user has been asked to confirm — held by the app, not the model. */
 export interface PendingAction {
   name: string;
@@ -147,7 +161,8 @@ export async function runTurn(
       continue;
     }
 
-    const { confirmed: _ignored, ...args } = turn.arguments;
+    const { confirmed: _ignored, ...rawArgs } = turn.arguments;
+    const args = stripUnmentionedDuration(rawArgs, userMessage);
 
     // A model retrying the exact same tool call after seeing its own result is stuck, not
     // making progress — stop rather than burning the rest of the iteration budget on it.
