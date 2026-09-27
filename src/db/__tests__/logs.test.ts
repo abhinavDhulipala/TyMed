@@ -138,4 +138,22 @@ describe('ensureLogsForDate / findOrCreateTodayLogForSchedule', () => {
     const allLogs = await mockDb.getAllAsync('SELECT * FROM intake_logs');
     expect(allLogs).toHaveLength(0);
   });
+
+  it('still resolves a log for today even when the recurrence rule would not normally create one', async () => {
+    // e.g. the alarm was armed while the schedule was active, then the schedule was edited to
+    // exclude today before it rang — the alarm firing at all is proof this dose is due today,
+    // so the native alarm's Taken button must not be left with nothing to mark.
+    const medicationId = await seedMedication();
+    const otherWeekday = (new Date().getDay() + 1) % 7;
+    const scheduleId = await createSchedule(medicationId, '08:00', {
+      recurrenceType: 'weekly',
+      daysOfWeek: [otherWeekday],
+      startDate: null,
+      endDate: null,
+    });
+
+    const log = await findOrCreateTodayLogForSchedule(scheduleId);
+    expect(log.scheduledDate).toBe(todayDateString());
+    expect(log.status).toBe('pending');
+  });
 });

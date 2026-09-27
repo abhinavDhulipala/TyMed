@@ -127,20 +127,39 @@ export async function setLogTakenAt(logId: number, takenAtIso: string): Promise<
   await db.runAsync('UPDATE intake_logs SET taken_at = ? WHERE id = ?', takenAtIso, logId);
 }
 
-/** Resolves today's log row for a given schedule, creating it if needed (used from the notification handler). */
+/** Resolves today's log row for a given schedule, creating it if needed (used from the
+ * notification handler and the native alarm's Taken button). Falls back to inserting the row
+ * directly if ensureLogsForDate's recurrence-active check didn't create one for today (e.g. the
+ * schedule was edited between the alarm arming and it ringing) — the alarm having fired at all
+ * is itself proof this dose is due today, so this must not leave Taken with nothing to mark. */
 export async function findOrCreateTodayLogForSchedule(scheduleId: number): Promise<IntakeLog> {
   await ensureLogsForDate(todayDateString());
   const db = await getDb();
   const today = todayDateString();
-  const row = await db.getFirstAsync<LogRow>(
+  let row = await db.getFirstAsync<LogRow>(
     'SELECT * FROM intake_logs WHERE schedule_id = ? AND scheduled_date = ?',
     scheduleId,
     today
   );
   if (!row) {
-    throw new Error(`No log row found for schedule ${scheduleId} on ${today}`);
+    const schedule = await db.getFirstAsync<{ medication_id: number; time_of_day: string }>(
+      'SELECT medication_id, time_of_day FROM schedules WHERE id = ?',
+      scheduleId
+    );
+    if (!schedule) {
+      throw new Error(`No schedule found with id ${scheduleId}`);
+    }
+    const result = await db.runAsync(
+      `INSERT INTO intake_logs (medication_id, schedule_id, scheduled_date, scheduled_time, status)
+       VALUES (?, ?, ?, ?, 'pending')`,
+      schedule.medication_id,
+      scheduleId,
+      today,
+      schedule.time_of_day
+    );
+    row = await db.getFirstAsync<LogRow>('SELECT * FROM intake_logs WHERE id = ?', result.lastInsertRowId);
   }
-  return mapLog(row);
+  return mapLog(row!);
 }
 
 export interface DailyAdherence {
