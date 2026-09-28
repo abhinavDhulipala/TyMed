@@ -9,11 +9,26 @@
        (rather than SCHEDULE_EXACT_ALARM) is a manifest-only grant with no runtime prompt,
        reserved for alarm-clock/calendar-style apps — exactly this use case. -->
   <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
   <application>
     <receiver
       android:name="expo.modules.tymedalarm.AlarmReceiver"
       android:exported="false" />
+
+    <!-- A reboot (or force-stop) clears every AlarmManager entry, including the
+         self-perpetuating daily chains AlarmReceiver arms — this re-arms them immediately
+         rather than waiting for the app to next be opened. BOOT_COMPLETED and
+         MY_PACKAGE_REPLACED are protected system broadcasts, so exported=true here carries
+         no risk of a third-party app triggering this receiver directly. -->
+    <receiver
+      android:name="expo.modules.tymedalarm.BootReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
 
     <service
       android:name="expo.modules.tymedalarm.AlarmRingService"

@@ -4,7 +4,7 @@ import {
   listAllEnabledSchedulesWithMedication,
   type ScheduleWithMedication,
 } from '@/src/db/schedules';
-import { cancelNativeAlarm, scheduleNativeAlarm } from '@/src/native/alarmModule';
+import { cancelNativeAlarm, scheduleNativeAlarm, stopNativeAlarmRinging } from '@/src/native/alarmModule';
 import type { RecurrenceType, Schedule } from '@/src/types';
 import { todayDateString } from '@/src/utils/date';
 import { getNotifications, DOSE_CATEGORY } from './setup';
@@ -163,6 +163,10 @@ export async function skipTodaysDoseReminder(schedule: ScheduleWithMedication): 
 
   cancelNativeAlarm(schedule.id);
   cancelNativeAlarm(schedule.id + SNOOZE_REQUEST_CODE_OFFSET);
+  // Cancelling above only stops *future* fires — if this schedule's alarm is ringing right
+  // now (e.g. the dose was marked taken from the app UI while the alarm sounded), it keeps
+  // ringing until told to stop explicitly.
+  stopNativeAlarmRinging();
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -190,9 +194,10 @@ export async function skipTodaysDoseReminder(schedule: ScheduleWithMedication): 
   });
 }
 
-/** Re-arms every enabled schedule's native alarm. Android only — call on app start to cover
- * alarms lost to a device reboot or a dev-client reinstall (known POC-scope limitation: this
- * only recovers on next app open, not immediately on reboot). No-op on iOS. */
+/** Re-arms every enabled schedule's native alarm. Android only — call on app start as a
+ * backstop for cases the native BootReceiver can't cover (e.g. a dev-client reinstall, which
+ * doesn't fire BOOT_COMPLETED); reboots are already handled immediately by BootReceiver
+ * reading the DB directly. No-op on iOS. */
 export async function rearmAllScheduleAlarms(): Promise<void> {
   if (Platform.OS !== 'android') return;
   const schedules = await listAllEnabledSchedulesWithMedication();

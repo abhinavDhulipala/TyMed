@@ -20,8 +20,9 @@ function RootLayout() {
     getUse24HourFormat().then(setTimeFormatPreference);
 
     if (Platform.OS === 'android') {
-      // Recovers alarms lost to a device reboot or dev-client reinstall — only on next app
-      // open, not immediately on reboot (no boot receiver in this pass).
+      // Backstop for a native BootReceiver (modules/tymed-alarm) that already re-arms alarms
+      // immediately on reboot by reading the DB directly — this covers anything it missed
+      // (e.g. a dev-client reinstall, which doesn't fire BOOT_COMPLETED).
       rearmAllScheduleAlarms();
       getFollowUpMinutes().then(setNativeFollowUpMinutes);
     }

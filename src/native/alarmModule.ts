@@ -5,6 +5,7 @@ import type { AlarmRequest } from '../../modules/tymed-alarm/src/TymedAlarm.type
 type TymedAlarmNativeModule = {
   scheduleAlarm(request: AlarmRequest): void;
   cancelAlarm(requestCode: number): void;
+  stopRinging(): void;
   setFollowUpMinutes(minutes: number): void;
 };
 
@@ -43,6 +44,17 @@ export function cancelNativeAlarm(requestCode: number): void {
     nativeModule?.cancelAlarm(requestCode);
   } catch (error) {
     console.warn('[alarm] failed to cancel native alarm:', error);
+    captureException(error);
+  }
+}
+
+/** Silences an alarm that's already ringing (foreground service + looping sound/vibration).
+ * Cancelling the pending AlarmManager entry alone has no effect on one already in progress. */
+export function stopNativeAlarmRinging(): void {
+  try {
+    nativeModule?.stopRinging();
+  } catch (error) {
+    console.warn('[alarm] failed to stop ringing native alarm:', error);
     captureException(error);
   }
 }

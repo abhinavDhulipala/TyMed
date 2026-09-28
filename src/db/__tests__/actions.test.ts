@@ -18,10 +18,12 @@ jest.mock('../client', () => ({
 
 const mockScheduleNativeAlarm = jest.fn();
 const mockCancelNativeAlarm = jest.fn();
+const mockStopNativeAlarmRinging = jest.fn();
 
 jest.mock('@/src/native/alarmModule', () => ({
   scheduleNativeAlarm: (request: unknown) => mockScheduleNativeAlarm(request),
   cancelNativeAlarm: (requestCode: number) => mockCancelNativeAlarm(requestCode),
+  stopNativeAlarmRinging: () => mockStopNativeAlarmRinging(),
   isNativeAlarmAvailable: () => true,
   setNativeFollowUpMinutes: jest.fn(),
 }));

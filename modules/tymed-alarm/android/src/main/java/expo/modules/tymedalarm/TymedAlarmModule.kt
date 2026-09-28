@@ -43,6 +43,10 @@ class TymedAlarmModule : Module() {
       cancelAlarm(requestCode)
     }
 
+    Function("stopRinging") {
+      stopRinging()
+    }
+
     Function("setFollowUpMinutes") { minutes: Int ->
       context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .edit()
@@ -52,42 +56,23 @@ class TymedAlarmModule : Module() {
   }
 
   private fun scheduleAlarm(request: AlarmRequest) {
-    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-    val fireIntent = Intent(context, AlarmReceiver::class.java).apply {
-      putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, request.requestCode)
-      putExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, request.scheduleId)
-      putExtra(AlarmReceiver.EXTRA_MEDICATION_ID, request.medicationId)
-      putExtra(AlarmReceiver.EXTRA_MEDICATION_NAME, request.medicationName)
-      putExtra(AlarmReceiver.EXTRA_DOSAGE, request.dosage)
-      putExtra(AlarmReceiver.EXTRA_IS_PRIMARY, request.isPrimary)
-      putExtra(AlarmReceiver.EXTRA_HOUR, request.hour)
-      putExtra(AlarmReceiver.EXTRA_MINUTE, request.minute)
-      putExtra(AlarmReceiver.EXTRA_RECURRENCE_TYPE, request.recurrenceType)
-      putExtra(AlarmReceiver.EXTRA_DAYS_OF_WEEK, request.daysOfWeek)
-      putExtra(AlarmReceiver.EXTRA_START_DATE, request.startDate)
-      putExtra(AlarmReceiver.EXTRA_END_DATE, request.endDate)
-    }
-    val operation = PendingIntent.getBroadcast(
+    armAlarm(
       context,
-      request.requestCode,
-      fireIntent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-
-    val showIntent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: Intent()
-    val showPendingIntent = PendingIntent.getActivity(
-      context,
-      request.requestCode,
-      showIntent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-
-    // setAlarmClock is the one exact-alarm API that needs no special permission — it's
-    // meant precisely for user-visible alarm-clock behavior like this.
-    alarmManager.setAlarmClock(
-      AlarmManager.AlarmClockInfo(request.triggerAtMillis.toLong(), showPendingIntent),
-      operation
+      AlarmSchedule(
+        triggerAtMillis = request.triggerAtMillis.toLong(),
+        requestCode = request.requestCode,
+        scheduleId = request.scheduleId,
+        medicationId = request.medicationId,
+        medicationName = request.medicationName,
+        dosage = request.dosage,
+        isPrimary = request.isPrimary,
+        hour = request.hour,
+        minute = request.minute,
+        recurrenceType = request.recurrenceType,
+        daysOfWeek = request.daysOfWeek,
+        startDate = request.startDate,
+        endDate = request.endDate
+      )
     )
   }
 
@@ -102,5 +87,17 @@ class TymedAlarmModule : Module() {
     )
     alarmManager.cancel(operation)
     operation.cancel()
+  }
+
+  // Cancelling a pending AlarmManager entry (above) only stops *future* fires — if an alarm
+  // is already ringing (foreground service + looping MediaPlayer), it keeps going until told
+  // to stop explicitly. Mirrors AlarmActivity's own Taken/Snooze path, so "mark as taken" from
+  // the in-app UI silences an alarm that's currently ringing too. Only one alarm can ever be
+  // ringing at a time (single service/notification), so no requestCode is needed here.
+  private fun stopRinging() {
+    val stopIntent = Intent(context, AlarmRingService::class.java).apply {
+      action = AlarmRingService.ACTION_STOP
+    }
+    context.startService(stopIntent)
   }
 }
