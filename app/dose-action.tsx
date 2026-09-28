@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { markDose } from '@/src/db/actions';
 import { findOrCreateTodayLogForSchedule } from '@/src/db/logs';
+import { captureException } from '@/src/observability/sentry';
 import { colors } from '@/src/theme';
 
 /**
@@ -25,10 +26,17 @@ export default function DoseActionScreen() {
     handled.current = true;
 
     (async () => {
-      const id = Number(scheduleId);
-      if (action === 'taken' && Number.isFinite(id)) {
-        const log = await findOrCreateTodayLogForSchedule(id);
-        await markDose(log.id, 'taken');
+      try {
+        const id = Number(scheduleId);
+        if (action === 'taken' && Number.isFinite(id)) {
+          const log = await findOrCreateTodayLogForSchedule(id);
+          await markDose(log.id, 'taken');
+        }
+      } catch (error) {
+        // An unhandled throw here would leave the user stuck on this screen's spinner
+        // forever, with the dose silently never marked taken — always bounce home instead.
+        console.warn('[dose-action] failed to mark dose taken:', error);
+        captureException(error);
       }
       router.replace('/');
     })();
