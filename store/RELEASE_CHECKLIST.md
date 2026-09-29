@@ -1,6 +1,7 @@
 # TyMed v1 (Android) — release checklist
 
-Scope: Android only for v1, 100% local data (no backend). iOS is a later milestone.
+Scope: Android only, 100% local data (no backend). Native Android (Kotlin + Jetpack Compose) as
+of the rewrite off Expo/React Native — see `AGENTS.md` for the current architecture.
 
 ## Distribution: direct APK, not the Play Store
 
@@ -40,13 +41,17 @@ backup) — not in this repo, especially once it's public.
 ### To build a release locally instead of via CI
 
 ```
-npx expo prebuild --platform android
 cd android && SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew assembleRelease
 ```
 
-Needs a local `keystore.properties` at the repo root (gitignored) — see
-`plugins/withReleaseSigning.js` for the exact fields it reads. Without that file, release builds
+Needs a local `keystore.properties` at the repo root (gitignored) — see the top of
+`android/app/build.gradle` for the exact fields it reads. Without that file, release builds
 silently fall back to debug signing, which still works for testing but shouldn't be shared.
+
+`versionCode`/`versionName` default to whatever's hardcoded in `android/app/build.gradle`; the
+release workflow overrides both from the pushed tag via `-PtymedVersionName=... -PtymedVersionCode=...`
+(see `.github/workflows/release.yml`) — pass the same properties locally if you want a build that
+matches a specific tag.
 
 ## Done in this repo
 
@@ -56,10 +61,12 @@ silently fall back to debug signing, which still works for testing but shouldn't
       end-to-end on-device: rings, snoozes, escalates, marks taken
 - [x] Recurring doses: daily/weekly/monthly with an optional end date
 - [x] Duplicate-medication detection (blocks exact matches, warns on likely-mistake partials)
-- [x] Automated tests (`npm test`) and typecheck (`npm run typecheck`)
-- [x] CI: typecheck + test on every push/PR (`ci.yml`); signed release build + GitHub Release
-      publish on every `v*` tag (`release.yml`)
-- [x] Crash reporting wired (`@sentry/react-native`), no-ops until a DSN is configured — release
+- [x] Automated tests: local unit tests (`./gradlew testDebugUnitTest`) plus an instrumented Room
+      migration adoption test (`./gradlew connectedDebugAndroidTest`) proving existing installs
+      upgrade without data loss
+- [x] CI: build + unit tests + lint on every push/PR (`ci.yml`); signed release build + GitHub
+      Release publish on every `v*` tag (`release.yml`)
+- [x] Crash reporting wired (Sentry Android), no-ops until a `SENTRY_DSN` is configured — release
       builds also disable Sentry's source-map upload step until then (it hard-fails without one)
 - [x] Privacy Policy + Terms of Use (`legal/`), published copy linked from in-app Settings
 - [x] In-app medical disclaimer (Settings screen)
@@ -73,12 +80,12 @@ silently fall back to debug signing, which still works for testing but shouldn't
 1. **Fill in placeholders** — `[support email]` and `[effective date]` in `legal/PRIVACY_POLICY.md`
    and `legal/TERMS_OF_USE.md` (and the published artifact). Even for a small private group, real
    contact info matters if anyone's trusting the app with health data.
-2. **Real-device testing beyond the emulator** — the alarm has only been verified on the emulator
-   and briefly on one Pixel. Specifically worth checking: does it still ring after being
-   backgrounded for hours (aggressive battery optimization on Samsung/Xiaomi/OnePlus can kill it),
-   and does it survive a device reboot (no `BOOT_COMPLETED` receiver yet — a known gap, only
-   recovers on next app open).
-3. **App icon** — still the default Expo template icon, not the Thyme mascot branding.
+2. **Real-device testing beyond the emulator** — the alarm (including `BootReceiver`'s reboot
+   recovery) has only been verified on the emulator. Specifically worth checking on a real
+   device: does it still ring after being backgrounded for hours (aggressive battery optimization
+   on Samsung/Xiaomi/OnePlus can kill it), and does the on-device AI assistant actually work
+   (needs a real AICore-capable device — not available in an emulator).
+3. **App icon** — still the placeholder launcher icon, not the Thyme mascot branding.
 4. *(Optional)* The release APK is a universal build (~110MB, all ABIs) for maximum compatibility.
    If download size matters for sharing, it can be restricted to `arm64-v8a` (covers virtually
    all real phones from the last several years) for a much smaller file.

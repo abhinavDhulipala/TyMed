@@ -1,0 +1,75 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ML Kit GenAI's AAR manifests declare minSdkVersion 26, above this app's minSdk 24.
+         Safe because GeminiNanoClient gates all usage behind Build.VERSION.SDK_INT >= 26. -->
+    <uses-sdk tools:overrideLibrary="com.google.mlkit.genai.prompt,com.google.mlkit.genai.common" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".TymedApplication"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="true"
+        android:theme="@style/Theme.Tymed"
+        android:supportsRtl="true"
+        tools:targetApi="29"
+        android:forceDarkAllowed="false">
+
+        <!-- Sentry's ContentProvider auto-inits from manifest meta-data before Application.onCreate()
+             runs, and crashes hard if no DSN is configured there. initSentry() does manual,
+             conditional init instead (see observability/Sentry.kt), so auto-init is disabled. -->
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Tymed.Splash"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".alarm.AlarmActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Tymed.Alarm" />
+
+        <service
+            android:name=".alarm.AlarmRingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <receiver android:name=".alarm.AlarmReceiver" android:exported="false" />
+
+        <receiver android:name=".alarm.BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
