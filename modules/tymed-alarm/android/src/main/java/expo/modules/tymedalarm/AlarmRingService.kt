@@ -1,9 +1,5 @@
 package expo.modules.tymedalarm
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -16,7 +12,7 @@ import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import androidx.core.app.NotificationCompat
+import android.util.Log
 
 /**
  * Foreground service that actually rings: loops alarm-stream audio and vibrates
@@ -27,8 +23,7 @@ class AlarmRingService : Service() {
   companion object {
     const val ACTION_RING = "expo.modules.tymedalarm.ACTION_RING"
     const val ACTION_STOP = "expo.modules.tymedalarm.ACTION_STOP"
-    const val CHANNEL_ID = "tymed-alarm-ring"
-    const val NOTIFICATION_ID = 9721
+    private const val TAG = "AlarmRingService"
   }
 
   private var mediaPlayer: MediaPlayer? = null
@@ -54,38 +49,24 @@ class AlarmRingService : Service() {
     val medicationName = intent?.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
     val dosage = intent?.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
 
-    ensureChannel()
+    ensureAlarmChannel(this)
+    val notification = buildAlarmNotification(this, requestCode, scheduleId, medicationId, medicationName, dosage)
 
-    val fullScreenIntent = Intent(this, AlarmActivity::class.java).apply {
-      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-      putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, requestCode)
-      putExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, scheduleId)
-      putExtra(AlarmReceiver.EXTRA_MEDICATION_ID, medicationId)
-      putExtra(AlarmReceiver.EXTRA_MEDICATION_NAME, medicationName)
-      putExtra(AlarmReceiver.EXTRA_DOSAGE, dosage)
-    }
-    val fullScreenPendingIntent = PendingIntent.getActivity(
-      this,
-      requestCode,
-      fullScreenIntent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-
-    val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-      .setContentTitle("Time for $medicationName")
-      .setContentText(dosage?.let { "Dose: $it" } ?: "Time to take your dose")
-      .setSmallIcon(applicationInfo.icon)
-      .setPriority(NotificationCompat.PRIORITY_HIGH)
-      .setCategory(NotificationCompat.CATEGORY_ALARM)
-      .setFullScreenIntent(fullScreenPendingIntent, true)
-      .setContentIntent(fullScreenPendingIntent)
-      .setOngoing(true)
-      .build()
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-    } else {
-      startForeground(NOTIFICATION_ID, notification)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(ALARM_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+      } else {
+        startForeground(ALARM_NOTIFICATION_ID, notification)
+      }
+    } catch (error: Exception) {
+      // The OS can refuse to promote this to a foreground service (e.g. background-start
+      // restrictions on a process that's never run since a reboot) — fall back to a plain
+      // notification rather than letting the exception crash the whole app. No looping
+      // sound/vibration this way, but the full-screen takeover still works.
+      Log.w(TAG, "startForeground rejected, falling back to a plain notification", error)
+      postFallbackAlarmNotification(this, requestCode, scheduleId, medicationId, medicationName, dosage)
+      stopSelf()
+      return
     }
 
     startAudioAndVibration()
@@ -135,19 +116,6 @@ class AlarmRingService : Service() {
     }
     mediaPlayer = null
     vibrator?.cancel()
-  }
-
-  private fun ensureChannel() {
-    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-      val channel = NotificationChannel(CHANNEL_ID, "Alarm", NotificationManager.IMPORTANCE_HIGH).apply {
-        description = "Full-screen medication alarms"
-        // The looping MediaPlayer handles sound; a channel sound too would double up.
-        setSound(null, null)
-        enableVibration(false)
-      }
-      manager.createNotificationChannel(channel)
-    }
   }
 
   override fun onDestroy() {
