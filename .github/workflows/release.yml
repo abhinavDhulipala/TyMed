@@ -14,13 +14,11 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
 
       - uses: actions/setup-java@v4
         with:
@@ -45,10 +43,8 @@ jobs:
           yes | sdkmanager --licenses > /dev/null
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Restore release keystore
+        working-directory: .
         run: |
           mkdir -p keystores
           echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystores/tymed-release.jks
@@ -59,27 +55,42 @@ jobs:
           RELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}
           EOF
 
-      - name: Set app version from tag
+      - name: Derive version name/code from tag
         # Android refuses to install a build over an existing one unless versionCode strictly
-        # increases (same/lower and it's rejected or, on a signature/version mismatch, treated
-        # as a fresh install that wipes data) — without this every build defaulted to
-        # versionCode 1 forever, silently breaking "install to update" and any history it was
-        # supposed to preserve.
-        run: node scripts/set-version-from-tag.js "${{ github.ref_name }}"
-
-      - name: Prebuild native Android project
-        run: npx expo prebuild --platform android
+        # increases (same/lower and it's rejected or, on a signature/version mismatch, treated as
+        # a fresh install that wipes data) — without this every build defaulted to versionCode 1
+        # forever, silently breaking "install to update" and the history it's supposed to
+        # preserve. Mirrors the old scripts/set-version-from-tag.js: versionCode = major*10000 +
+        # minor*100 + patch — room for 99 minor/patch versions per major, plenty for this app's
+        # pace, and versionCode only needs to keep increasing, never be "clean."
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Tag \"$TAG\" isn't of the form vX.Y.Z" >&2
+            exit 1
+          fi
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          PATCH="${BASH_REMATCH[3]}"
+          VERSION_NAME="$MAJOR.$MINOR.$PATCH"
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          echo "Version $VERSION_NAME (versionCode $VERSION_CODE) from tag $TAG"
+          echo "TYMED_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "TYMED_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
-        working-directory: android
         env:
           # No Sentry project is configured yet — without this, the Sentry Gradle plugin hard-
-          # fails a release build trying to upload source maps. Remove once EXPO_PUBLIC_SENTRY_DSN
-          # and a real Sentry auth token are wired up as secrets.
+          # fails a release build trying to upload source maps. Remove once SENTRY_DSN and a real
+          # Sentry auth token are wired up as secrets.
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
-        run: ./gradlew assembleRelease
+        run: >
+          ./gradlew assembleRelease
+          -PtymedVersionName="$TYMED_VERSION_NAME"
+          -PtymedVersionCode="$TYMED_VERSION_CODE"
 
       - name: Rename APK for the release
+        working-directory: .
         run: |
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/TyMed-${{ github.ref_name }}.apk"

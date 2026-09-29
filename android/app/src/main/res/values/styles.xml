@@ -1,0 +1,20 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <!-- The app's warm palette (src/theme.ts historically) is light-only by design; force light
+       like the old app.json's userInterfaceStyle:"light" rather than following system dark mode. -->
+  <style name="Theme.Tymed" parent="Theme.Material3.Light.NoActionBar">
+    <item name="colorPrimary">@color/colorPrimary</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+  </style>
+
+  <style name="Theme.Tymed.Splash" parent="Theme.SplashScreen">
+    <item name="windowSplashScreenBackground">@color/splashscreen_background</item>
+    <item name="windowSplashScreenAnimatedIcon">@drawable/splashscreen_logo</item>
+    <item name="postSplashScreenTheme">@style/Theme.Tymed</item>
+  </style>
+
+  <!-- Full-screen alarm takeover: no action bar, floats over the lock screen. -->
+  <style name="Theme.Tymed.Alarm" parent="Theme.Material3.Light.NoActionBar">
+    <item name="android:windowIsTranslucent">false</item>
+  </style>
+</resources>
