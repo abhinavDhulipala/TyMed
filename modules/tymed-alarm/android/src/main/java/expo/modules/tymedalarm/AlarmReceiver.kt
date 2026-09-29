@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import java.util.Calendar
 import java.util.Locale
 
@@ -18,6 +19,7 @@ import java.util.Locale
  */
 class AlarmReceiver : BroadcastReceiver() {
   companion object {
+    private const val TAG = "AlarmReceiver"
     const val EXTRA_REQUEST_CODE = "requestCode"
     const val EXTRA_SCHEDULE_ID = "scheduleId"
     const val EXTRA_MEDICATION_ID = "medicationId"
@@ -128,7 +130,15 @@ class AlarmReceiver : BroadcastReceiver() {
         putExtra(EXTRA_MEDICATION_NAME, medicationName)
         putExtra(EXTRA_DOSAGE, dosage)
       }
-      context.startForegroundService(serviceIntent)
+      try {
+        context.startForegroundService(serviceIntent)
+      } catch (error: Exception) {
+        // The OS can refuse this outright (e.g. background-start restrictions on a process
+        // that's never run since a reboot) — fall back to a plain notification rather than
+        // letting the exception crash the whole app.
+        Log.w(TAG, "startForegroundService rejected, falling back to a plain notification", error)
+        postFallbackAlarmNotification(context, requestCode, scheduleId, medicationId, medicationName, dosage)
+      }
     }
 
     if (isPrimary) {
