@@ -6,8 +6,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 /**
  * Proves the Room adoption strategy documented on [MIGRATION_4_5]: an existing install's on-disk
@@ -21,16 +23,46 @@ import org.junit.runner.RunWith
  * expects an *exported Room schema* for the starting version — but version 4 here was never a
  * Room version, it's the old expo-sqlite app's hand-written schema. Writing the file by hand is
  * also a more faithful simulation of the real scenario: a file dropped in place before Room ever
- * touches it.
+ * touches it — **at expo-sqlite's actual storage path** (`filesDir/SQLite/<name>`, not Room's
+ * default `context.getDatabasePath()` location). An earlier version of this test used Room's
+ * default path for both writing and reading the fake legacy file, which passed while the real
+ * app quietly opened an empty database at the wrong path on every real device — the exact bug
+ * this test exists to catch. See [TymedDatabase.databaseFile].
  */
 @RunWith(AndroidJUnit4::class)
 class DatabaseMigrationTest {
     private val testDbName = "migration-test.db"
 
+    private fun testDbFile(context: android.content.Context) = File(context.filesDir, "SQLite/$testDbName")
+
+    @Test
+    fun getInstanceOpensTheDatabaseAtExpoSqlitesHistoricalPath() {
+        // The single most direct regression guard: whatever path TymedDatabase actually opens,
+        // it must be filesDir/SQLite/tymed.db — not Room/Android's default `databases/` location
+        // — because that's where every existing install's real data physically lives on disk.
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase("tymed.db")
+        File(context.filesDir, "SQLite/tymed.db").delete()
+
+        val db = TymedDatabase.getInstance(context)
+        try {
+            runBlocking { db.appSettingDao().get("__probe__") }
+        } finally {
+            db.close()
+        }
+
+        val expected = File(context.filesDir, "SQLite/tymed.db")
+        assertTrue("expected a database file at ${expected.path}", expected.exists())
+        assertTrue(
+            "Room's default databases/ location should NOT be used",
+            !context.getDatabasePath("tymed.db").exists(),
+        )
+    }
+
     @Test
     fun migrate4To5OnLegacySchemaPreservesExistingData() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dbFile = context.getDatabasePath(testDbName)
+        val dbFile = testDbFile(context)
         dbFile.parentFile?.mkdirs()
         dbFile.delete()
 
@@ -102,10 +134,11 @@ class DatabaseMigrationTest {
             legacy.version = 4
         }
 
-        // Opens the same file through Room, exactly as the app does on a real upgrade — this
-        // exercises the real onUpgrade -> MIGRATION_4_5 -> onValidateSchema path, which throws
-        // immediately if these entities don't structurally match what's actually on disk.
-        val db = Room.databaseBuilder(context, TymedDatabase::class.java, testDbName)
+        // Opens the same file through Room at its exact absolute path — exactly what
+        // TymedDatabase.getInstance() does in production — exercising the real
+        // onUpgrade -> MIGRATION_4_5 -> onValidateSchema path, which throws immediately if these
+        // entities don't structurally match what's actually on disk.
+        val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
             .addMigrations(MIGRATION_4_5)
             .build()
         try {
@@ -126,7 +159,7 @@ class DatabaseMigrationTest {
             }
         } finally {
             db.close()
-            context.deleteDatabase(testDbName)
+            dbFile.delete()
         }
     }
 }
