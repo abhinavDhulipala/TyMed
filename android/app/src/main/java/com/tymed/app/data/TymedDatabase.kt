@@ -14,6 +14,7 @@ import com.tymed.app.data.entity.AppSettingEntity
 import com.tymed.app.data.entity.IntakeLog
 import com.tymed.app.data.entity.Medication
 import com.tymed.app.data.entity.Schedule
+import java.io.File
 
 /**
  * Existing installs (from the old Expo/expo-sqlite build this app replaces) already have a
@@ -124,14 +125,26 @@ abstract class TymedDatabase : RoomDatabase() {
         @Volatile
         private var instance: TymedDatabase? = null
 
+        /** Historically expo-sqlite's own storage convention (`FileSystem.documentDirectory +
+         * "SQLite/"` on Android, i.e. `filesDir/SQLite/`), not Room/Android's default
+         * `context.getDatabasePath()` location (`databases/`). This *must* stay exactly this
+         * path: existing installs' real data lives here on disk, and Room silently creates a
+         * fresh empty database with no error if it doesn't find a file at the path it's given —
+         * getting this path wrong doesn't crash or fail loudly, it just quietly looks empty
+         * while the real file sits untouched one directory over. */
+        fun databaseFile(context: Context): File = File(context.filesDir, "SQLite/tymed.db")
+
         fun getInstance(context: Context): TymedDatabase =
             instance ?: synchronized(this) {
                 instance ?: build(context).also { instance = it }
             }
 
-        private fun build(context: Context): TymedDatabase =
-            Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, "tymed.db")
+        private fun build(context: Context): TymedDatabase {
+            val dbFile = databaseFile(context)
+            dbFile.parentFile?.mkdirs()
+            return Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, dbFile.absolutePath)
                 .addMigrations(MIGRATION_4_5)
                 .build()
+        }
     }
 }
