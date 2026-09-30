@@ -18,6 +18,10 @@ object TymedColors {
     val background = Color(0xFFFAF0DF)
     val card = Color(0xFFFFF9EF)
     val border = Color(0xFFDCC19B)
+    /** Edges that must read against [background] itself (≥ 2:1), e.g. the calendar card. */
+    val borderStrong = Color(0xFFC9A77A)
+    /** A warm sand fill for feature cards that should stand off the page, e.g. the calendar. */
+    val sand = Color(0xFFF6E3C3)
     val text = Color(0xFF2B1D12)
     val textMuted = Color(0xFF634A33)
     val primary = Color(0xFFA84A1C)

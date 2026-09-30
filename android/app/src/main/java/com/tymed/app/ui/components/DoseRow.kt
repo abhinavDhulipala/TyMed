@@ -1,6 +1,7 @@
 package com.tymed.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ fun DoseRow(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .background(TymedColors.card, RoundedCornerShape(TymedRadii.md))
+            .border(1.dp, TymedColors.borderStrong, RoundedCornerShape(TymedRadii.md))
             .padding(TymedSpacing.md),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

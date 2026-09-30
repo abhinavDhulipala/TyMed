@@ -1,6 +1,7 @@
 package com.tymed.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tymed.app.data.entity.Medication
 import com.tymed.app.ui.theme.TymedColors
@@ -26,6 +28,7 @@ fun MedicationCard(medication: Medication, onClick: () -> Unit, modifier: Modifi
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .background(TymedColors.card, RoundedCornerShape(TymedRadii.md))
+            .border(1.dp, TymedColors.borderStrong, RoundedCornerShape(TymedRadii.md))
             .padding(TymedSpacing.md),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
