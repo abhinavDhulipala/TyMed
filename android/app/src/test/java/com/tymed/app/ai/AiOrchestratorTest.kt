@@ -23,9 +23,9 @@ class AiOrchestratorTest {
 
     private val addArgs = mapOf("name" to "Amoxicillin", "dosage" to "500 mg", "times" to listOf("08:00", "20:00"), "durationDays" to 7)
     private val addPending = ToolResult.AddMedicationOutcome(
-        AddMedicationResult.NeedsConfirmation("Amoxicillin", "500 mg", listOf("08:00", "20:00"), "2026-09-30", emptyList()),
+        AddMedicationResult.NeedsConfirmation("Amoxicillin", "500 mg", listOf("08:00", "20:00"), "2099-09-30", emptyList()),
     )
-    private val addDone = ToolResult.AddMedicationOutcome(AddMedicationResult.Added("Amoxicillin", listOf("08:00", "20:00"), "2026-09-30"))
+    private val addDone = ToolResult.AddMedicationOutcome(AddMedicationResult.Added("Amoxicillin", listOf("08:00", "20:00"), "2099-09-30"))
 
     private fun toolCall(tool: String, args: Map<String, Any?>) =
         org.json.JSONObject().put("tool", tool).put("arguments", mapToJson(args)).toString()

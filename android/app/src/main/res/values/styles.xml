@@ -16,5 +16,8 @@
   <!-- Full-screen alarm takeover: no action bar, floats over the lock screen. -->
   <style name="Theme.Tymed.Alarm" parent="Theme.Material3.Light.NoActionBar">
     <item name="android:windowIsTranslucent">false</item>
+    <item name="android:statusBarColor">@color/alarm_background</item>
+    <item name="android:navigationBarColor">@color/alarm_background</item>
+    <item name="android:windowLightStatusBar">false</item>
   </style>
 </resources>

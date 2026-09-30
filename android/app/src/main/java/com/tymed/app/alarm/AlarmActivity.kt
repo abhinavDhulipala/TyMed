@@ -189,7 +189,7 @@ class AlarmActivity : ComponentActivity() {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = corner
             if (primary) {
-                setColor(Color.parseColor("#FFFBF3"))
+                setColor(Color.parseColor("#FFF9EF"))
             } else {
                 setColor(Color.TRANSPARENT)
                 setStroke((1.5f * density).toInt(), Color.WHITE)
@@ -293,6 +293,7 @@ class AlarmActivity : ComponentActivity() {
 
     companion object {
         private const val COUNTDOWN_MILLIS = 5 * 60 * 1000L
+        // Keep in sync with @color/alarm_background (the alarm theme's status/navigation bars).
         private const val BACKGROUND_GREEN = "#1F3325"
     }
 }
