@@ -10,33 +10,52 @@ import androidx.compose.ui.unit.sp
 
 /** A warm, cheerful, slightly vintage take on a light Material palette — solid/opaque fills,
  * like an old apothecary label. Deliberately light-only (no dark variant), matching the app's
- * original design intent. */
+ * original design intent.
+ *
+ * Every text pairing used in the app meets WCAG AA (≥ 4.5:1): [text]/[textMuted] on
+ * [background]/[card]/[border], white on [primary], and each accent on its own `*Muted` tint. */
 object TymedColors {
-    val background = Color(0xFFF6EFE2)
-    val card = Color(0xFFFFFBF3)
-    val border = Color(0xFFE6D8C0)
-    val text = Color(0xFF3B2E22)
-    val textMuted = Color(0xFF8A7860)
-    val primary = Color(0xFFD97742)
-    val primaryMuted = Color(0xFFF5DFC8)
-    val success = Color(0xFF5A8C4E)
-    val successMuted = Color(0xFFE3EDD8)
-    val warning = Color(0xFFCC9A2E)
-    val warningMuted = Color(0xFFF6E7C0)
-    val danger = Color(0xFFB84B37)
-    val dangerMuted = Color(0xFFF3DBD2)
+    val background = Color(0xFFFAF0DF)
+    val card = Color(0xFFFFF9EF)
+    val border = Color(0xFFDCC19B)
+    val text = Color(0xFF2B1D12)
+    val textMuted = Color(0xFF634A33)
+    val primary = Color(0xFFA84A1C)
+    val primaryMuted = Color(0xFFFCE8D6)
+    val success = Color(0xFF3D6E2F)
+    val successMuted = Color(0xFFDFEBCB)
+    val warning = Color(0xFF8A5A00)
+    val warningMuted = Color(0xFFFBE3AE)
+    val danger = Color(0xFFA3301C)
+    val dangerMuted = Color(0xFFF6D5CA)
+
+    /** Material's tonal surfaces (navigation bar, dialogs, pickers, switch tracks), stepped from
+     * [card] toward [border] so they stay in the warm family instead of Material's lavender. */
+    val surfaceContainerLow = Color(0xFFFCF4E6)
+    val surfaceContainer = Color(0xFFF5E6CE)
+    val surfaceContainerHigh = Color(0xFFF3E3CA)
+    val surfaceContainerHighest = Color(0xFFEBD6B7)
 }
 
 /** Kept independent of [TymedColors] so the mascot's look can evolve separately from the
  * functional palette. */
 object MascotColors {
-    val leaf = Color(0xFF6B9E52)
-    val leafLight = Color(0xFF9AC77E)
-    val leafDark = Color(0xFF4A7A3B)
-    val pot = Color(0xFFD97742)
-    val potRim = Color(0xFFE89760)
-    val face = Color(0xFF3B2E22)
-    val blush = Color(0xFFF0A488)
+    val leaf = Color(0xFF6E9A4E)
+    val leafLight = Color(0xFF9CC273)
+    val leafMid = Color(0xFF83AD5F)
+    val leafDark = Color(0xFF4E7A38)
+    val vein = Color(0xFFB9D796)
+    val stem = Color(0xFF6B5236)
+    val flower = Color(0xFFC9A0DC)
+    val flowerDeep = Color(0xFFA97CC0)
+    val flowerEye = Color(0xFFF4E3F7)
+    val pot = Color(0xFFC2622D)
+    val potShade = Color(0xFFA84A1C)
+    val potRim = Color(0xFFDB8450)
+    val face = Color(0xFF2B1D12)
+    val shine = Color(0xFFFFFDF8)
+    val blush = Color(0xFFEE9A7C)
+    val tongue = Color(0xFFE07A6A)
 }
 
 object TymedSpacing {
@@ -56,19 +75,33 @@ object TymedRadii {
 private val TymedColorScheme = lightColorScheme(
     primary = TymedColors.primary,
     onPrimary = Color.White,
+    secondary = TymedColors.primary,
+    onSecondary = Color.White,
     secondaryContainer = TymedColors.primaryMuted,
     background = TymedColors.background,
     onBackground = TymedColors.text,
     surface = TymedColors.card,
     onSurface = TymedColors.text,
+    onSecondaryContainer = TymedColors.text,
+    onSurfaceVariant = TymedColors.textMuted,
+    surfaceVariant = TymedColors.surfaceContainerHighest,
+    surfaceContainerLowest = TymedColors.card,
+    surfaceContainerLow = TymedColors.surfaceContainerLow,
+    surfaceContainer = TymedColors.surfaceContainer,
+    surfaceContainerHigh = TymedColors.surfaceContainerHigh,
+    surfaceContainerHighest = TymedColors.surfaceContainerHighest,
     outline = TymedColors.border,
     error = TymedColors.danger,
+    onError = Color.White,
 )
 
+// No colors baked into these styles: MaterialTheme makes bodyLarge the default text style, and a
+// color set here would override every component's content color (e.g. white on filled buttons).
+// Body text still comes out as TymedColors.text via the Scaffold's onBackground/onSurface.
 private val TymedTypography = Typography(
-    bodyLarge = Typography().bodyLarge.copy(fontSize = 16.sp, color = TymedColors.text),
-    bodyMedium = Typography().bodyMedium.copy(fontSize = 14.sp, color = TymedColors.text),
-    titleLarge = Typography().titleLarge.copy(fontSize = 22.sp, color = TymedColors.text),
+    bodyLarge = Typography().bodyLarge.copy(fontSize = 16.sp),
+    bodyMedium = Typography().bodyMedium.copy(fontSize = 14.sp),
+    titleLarge = Typography().titleLarge.copy(fontSize = 22.sp),
 )
 
 @Composable
