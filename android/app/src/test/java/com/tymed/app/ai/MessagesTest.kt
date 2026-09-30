@@ -4,12 +4,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+// End dates are far in the future on purpose: formatFullDateLabel renders the current date as
+// "today" (and the day before as "Yesterday"), so a near-term fixture date breaks on that day.
 class MessagesTest {
 
     @Test
     fun `confirmationQuestion describes an add with its schedule`() {
         val result = ToolResult.AddMedicationOutcome(
-            AddMedicationResult.NeedsConfirmation("Amoxicillin", "500 mg", listOf("08:00", "20:00"), "2026-09-30", emptyList()),
+            AddMedicationResult.NeedsConfirmation("Amoxicillin", "500 mg", listOf("08:00", "20:00"), "2099-09-30", emptyList()),
         )
         assertEquals(
             "Add Amoxicillin 500 mg at 8:00 AM and 8:00 PM every day through Wednesday, September 30?",
@@ -63,7 +65,7 @@ class MessagesTest {
 
     @Test
     fun `doneMessage reports an added medication`() {
-        val result = ToolResult.AddMedicationOutcome(AddMedicationResult.Added("Amoxicillin", listOf("08:00", "20:00"), "2026-09-30"))
+        val result = ToolResult.AddMedicationOutcome(AddMedicationResult.Added("Amoxicillin", listOf("08:00", "20:00"), "2099-09-30"))
         assertEquals(
             "Done — added Amoxicillin at 8:00 AM and 8:00 PM every day through Wednesday, September 30.",
             doneMessage(result),
