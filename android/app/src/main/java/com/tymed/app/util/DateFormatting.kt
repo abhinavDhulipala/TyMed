@@ -1,6 +1,8 @@
 package com.tymed.app.util
 
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -29,6 +31,18 @@ fun formatTime(hhmm: String): String {
     val period = if (h >= 12) "PM" else "AM"
     val hour12 = if (h % 12 == 0) 12 else h % 12
     return "%d:%02d %s".format(hour12, m, period)
+}
+
+/** Formats an [IntakeLog.takenAt]-style ISO instant string as a local wall-clock time, honoring
+ * [TimeFormatPreference] the same way [formatTime] does for scheduled times. Falls back to the
+ * raw string if it isn't parseable, rather than crashing a list row over a malformed timestamp. */
+fun formatInstantTime(isoInstant: String): String {
+    val zoned = try {
+        Instant.parse(isoInstant).atZone(ZoneId.systemDefault())
+    } catch (error: Exception) {
+        return isoInstant
+    }
+    return formatTime("%02d:%02d".format(zoned.hour, zoned.minute))
 }
 
 fun formatDateLabel(dateStr: String): String {

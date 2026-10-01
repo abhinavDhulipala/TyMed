@@ -25,6 +25,7 @@ import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.ui.theme.TymedColors
 import com.tymed.app.ui.theme.TymedRadii
 import com.tymed.app.ui.theme.TymedSpacing
+import com.tymed.app.util.formatInstantTime
 import com.tymed.app.util.formatTime
 
 @Composable
@@ -37,7 +38,11 @@ fun DoseRow(
     modifier: Modifier = Modifier,
 ) {
     val (statusLabel, statusColor, statusBackground) = when (dose.log.status) {
-        DoseStatus.TAKEN -> Triple("Taken", TymedColors.success, TymedColors.successMuted)
+        DoseStatus.TAKEN -> {
+            val takenAt = dose.log.takenAt
+            val label = if (takenAt != null) "Taken at ${formatInstantTime(takenAt)}" else "Taken"
+            Triple(label, TymedColors.success, TymedColors.successMuted)
+        }
         DoseStatus.SKIPPED -> Triple("Skipped", TymedColors.textMuted, TymedColors.border)
         else -> Triple("Pending", TymedColors.primary, TymedColors.primaryMuted)
     }
