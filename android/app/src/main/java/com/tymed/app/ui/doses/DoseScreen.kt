@@ -28,9 +28,9 @@ import com.tymed.app.ui.rememberAppContainer
 import com.tymed.app.ui.theme.TymedColors
 import com.tymed.app.ui.theme.TymedSpacing
 import com.tymed.app.util.formatFullDateLabel
+import com.tymed.app.util.formatInstantTime
 import com.tymed.app.util.formatTime
 import java.time.Instant
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun DoseScreen(logId: Long, onEditMedication: (Long) -> Unit, modifier: Modifier = Modifier) {
@@ -56,14 +56,7 @@ fun DoseScreen(logId: Long, onEditMedication: (Long) -> Unit, modifier: Modifier
         Text(text = "Status: ${current.log.status}", color = TymedColors.text)
 
         if (current.log.status == DoseStatus.TAKEN && current.log.takenAt != null) {
-            val takenLabel = try {
-                DateTimeFormatter.ofPattern("h:mm a").format(
-                    Instant.parse(current.log.takenAt).atZone(java.time.ZoneId.systemDefault()),
-                )
-            } catch (error: Exception) {
-                current.log.takenAt
-            }
-            Text(text = "Taken at $takenLabel", color = TymedColors.textMuted)
+            Text(text = "Taken at ${formatInstantTime(current.log.takenAt)}", color = TymedColors.textMuted)
 
             var showTimePicker by remember { mutableStateOf(false) }
             TextButton(onClick = { showTimePicker = true }) { Text("Correct taken time") }
