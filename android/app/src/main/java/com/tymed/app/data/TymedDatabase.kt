@@ -7,10 +7,12 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.tymed.app.data.dao.AppSettingDao
+import com.tymed.app.data.dao.IncidentDao
 import com.tymed.app.data.dao.IntakeLogDao
 import com.tymed.app.data.dao.MedicationDao
 import com.tymed.app.data.dao.ScheduleDao
 import com.tymed.app.data.entity.AppSettingEntity
+import com.tymed.app.data.entity.Incident
 import com.tymed.app.data.entity.IntakeLog
 import com.tymed.app.data.entity.Medication
 import com.tymed.app.data.entity.Schedule
@@ -110,9 +112,22 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** A brand-new table with no legacy on-disk data to preserve, so (unlike [MIGRATION_4_5]) a
+ * plain `CREATE TABLE` is enough — no create-copy-drop-rename dance needed. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS incidents (" +
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                "type TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT, " +
+                "severity TEXT, notes TEXT, created_at TEXT NOT NULL)",
+        )
+    }
+}
+
 @Database(
-    entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class],
-    version = 5,
+    entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class, Incident::class],
+    version = 6,
     exportSchema = true,
 )
 abstract class TymedDatabase : RoomDatabase() {
@@ -120,6 +135,7 @@ abstract class TymedDatabase : RoomDatabase() {
     abstract fun scheduleDao(): ScheduleDao
     abstract fun intakeLogDao(): IntakeLogDao
     abstract fun appSettingDao(): AppSettingDao
+    abstract fun incidentDao(): IncidentDao
 
     companion object {
         @Volatile
@@ -143,7 +159,7 @@ abstract class TymedDatabase : RoomDatabase() {
             val dbFile = databaseFile(context)
             dbFile.parentFile?.mkdirs()
             return Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, dbFile.absolutePath)
-                .addMigrations(MIGRATION_4_5)
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                 .build()
         }
     }

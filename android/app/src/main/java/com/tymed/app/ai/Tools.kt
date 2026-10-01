@@ -3,8 +3,12 @@ package com.tymed.app.ai
 import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.DoseReminderParams
 import com.tymed.app.data.entity.DoseStatus
+import com.tymed.app.data.entity.Incident
 import com.tymed.app.data.entity.RecurrenceType
+import com.tymed.app.data.entity.durationSeconds
 import com.tymed.app.data.repository.DoseActions
+import com.tymed.app.data.repository.IncidentInput
+import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationInput
 import com.tymed.app.data.repository.MedicationRepository
@@ -14,6 +18,7 @@ import com.tymed.app.data.repository.ScheduleSyncRepository
 import com.tymed.app.data.repository.decodeDaysOfWeek
 import com.tymed.app.util.todayDateString
 import org.json.JSONObject
+import java.time.Instant
 import java.time.LocalDate
 
 private val DEFAULT_TIMES = listOf("08:00")
@@ -65,6 +70,23 @@ sealed interface MarkDoseTakenResult {
     data class MarkedTaken(val medicationName: String, val scheduledTime: String) : MarkDoseTakenResult
 }
 
+data class IncidentSummary(
+    val type: String,
+    val startedAt: String,
+    val endedAt: String?,
+    val durationSeconds: Long?,
+    val severity: String?,
+    val notes: String?,
+)
+
+/** Gated on confirmed like every other write (see [markDoseTaken]'s doc) — a misparsed
+ * voice/chat command silently logging a seizure that didn't happen, or the wrong duration,
+ * is exactly the kind of mistake that needs a human glance before it hits the DB. */
+sealed interface LogIncidentResult {
+    data class NeedsConfirmation(val summary: IncidentSummary) : LogIncidentResult
+    data class Logged(val summary: IncidentSummary) : LogIncidentResult
+}
+
 /** Mirrors the shape of runTool's dynamic "unknown" TS result as a closed set of Kotlin types. */
 sealed interface ToolResult {
     data class Error(val message: String) : ToolResult
@@ -72,6 +94,8 @@ sealed interface ToolResult {
     data class UpdateScheduleOutcome(val result: UpdateScheduleResult) : ToolResult
     data class TodaysDosesOutcome(val doses: List<TodaysDose>) : ToolResult
     data class MarkDoseTakenOutcome(val result: MarkDoseTakenResult) : ToolResult
+    data class LogIncidentOutcome(val result: LogIncidentResult) : ToolResult
+    data class RecentIncidentsOutcome(val incidents: List<IncidentSummary>) : ToolResult
 }
 
 val TOOL_DESCRIPTIONS: Map<String, String> = linkedMapOf(
@@ -93,6 +117,18 @@ val TOOL_DESCRIPTIONS: Map<String, String> = linkedMapOf(
             "taken. If the result status is \"not_found\", tell the user and list today's medications. If " +
             "\"ambiguous\", ask which time and re-call with scheduledTime set."
         ),
+    "log_incident" to (
+        "log_incident(type: string, minutesAgo?: number [when it started, minutes before now; default 0 = just " +
+            "now], durationSeconds?: number [how long it lasted, if it's over; omit if it's still happening], " +
+            "severity?: string [\"mild\"|\"moderate\"|\"severe\"], notes?: string) — logs a notable event like a " +
+            "seizure, not just medications. If the user doesn't say what kind of event, ask. Always returns " +
+            "\"needs_confirmation\" first: read the summary back to the user, and only re-call with confirmed:true " +
+            "once they've agreed it's right."
+        ),
+    "get_recent_incidents" to (
+        "get_recent_incidents(type?: string, limit?: number [default 10]) — returns recently logged incidents " +
+            "(e.g. seizures), most recent first, each with its duration if it has ended."
+        ),
 )
 
 /** Seam between [AiOrchestrator] and tool execution, so tests can substitute a scripted fake
@@ -108,6 +144,7 @@ class Tools(
     private val scheduleSyncRepository: ScheduleSyncRepository,
     private val alarmScheduler: AlarmScheduler,
     private val doseActions: DoseActions,
+    private val incidentRepository: IncidentRepository,
 ) : ToolRunner {
 
     /** Mirrors app/(tabs)/medications/new.tsx's submit flow: one createMedication, then one
@@ -274,6 +311,51 @@ class Tools(
         return MarkDoseTakenResult.MarkedTaken(match.medicationName, match.log.scheduledTime)
     }
 
+    /** Takes offsets from now ([minutesAgo], [durationSeconds]) rather than asking the model for
+     * absolute timestamps, for the same reason [addMedication] takes durationDays — small
+     * on-device models are unreliable at date/time arithmetic. */
+    suspend fun logIncident(
+        type: String,
+        minutesAgo: Int?,
+        durationSeconds: Int?,
+        severity: String?,
+        notes: String?,
+        confirmed: Boolean,
+    ): LogIncidentResult {
+        val trimmedType = type.trim()
+        require(trimmedType.isNotEmpty()) { "log_incident requires a non-empty type" }
+
+        val startedAt = Instant.now().minusSeconds((minutesAgo ?: 0).toLong() * 60)
+        val endedAt = durationSeconds?.let { startedAt.plusSeconds(it.toLong()) }
+        val summary = IncidentSummary(
+            type = trimmedType,
+            startedAt = startedAt.toString(),
+            endedAt = endedAt?.toString(),
+            durationSeconds = durationSeconds?.toLong(),
+            severity = severity?.trim()?.takeIf { it.isNotEmpty() },
+            notes = notes?.trim()?.takeIf { it.isNotEmpty() },
+        )
+
+        if (!confirmed) {
+            return LogIncidentResult.NeedsConfirmation(summary)
+        }
+
+        incidentRepository.createIncident(
+            IncidentInput(
+                type = summary.type,
+                startedAt = summary.startedAt,
+                endedAt = summary.endedAt,
+                severity = summary.severity,
+                notes = summary.notes,
+            ),
+        )
+        return LogIncidentResult.Logged(summary)
+    }
+
+    suspend fun getRecentIncidents(type: String?, limit: Int?): List<IncidentSummary> =
+        incidentRepository.recentIncidents(type?.trim()?.takeIf { it.isNotEmpty() }, limit ?: 10)
+            .map { it.toSummary() }
+
     /** Runs a tool call and always resolves — a bad tool name or invalid arguments becomes
      * an [ToolResult.Error] fed back to the model instead of throwing, so a single malformed
      * model response can't crash the whole conversation turn. */
@@ -306,6 +388,22 @@ class Tools(
                         confirmed = args["confirmed"] == true,
                     ),
                 )
+                "log_incident" -> ToolResult.LogIncidentOutcome(
+                    logIncident(
+                        type = args["type"] as? String ?: "",
+                        minutesAgo = intArgNonNegative(args["minutesAgo"]),
+                        durationSeconds = intArg(args["durationSeconds"]),
+                        severity = args["severity"] as? String,
+                        notes = args["notes"] as? String,
+                        confirmed = args["confirmed"] == true,
+                    ),
+                )
+                "get_recent_incidents" -> ToolResult.RecentIncidentsOutcome(
+                    getRecentIncidents(
+                        type = args["type"] as? String,
+                        limit = intArg(args["limit"]),
+                    ),
+                )
                 else -> ToolResult.Error("Unknown tool \"$name\"")
             }
         } catch (error: Exception) {
@@ -320,7 +418,25 @@ class Tools(
         is Long -> value.toInt().takeIf { it > 0 }
         else -> null
     }
+
+    // Unlike durationDays, 0 is meaningful here ("just now") — only negative values are rejected.
+    private fun intArgNonNegative(value: Any?): Int? = when (value) {
+        is Int -> value.takeIf { it >= 0 }
+        is Double -> value.toInt().takeIf { it >= 0 && value == value.toInt().toDouble() }
+        is Long -> value.toInt().takeIf { it >= 0 }
+        else -> null
+    }
 }
+
+private fun Incident.toSummary(): IncidentSummary =
+    IncidentSummary(
+        type = type,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        durationSeconds = endedAt?.let { durationSeconds() },
+        severity = severity,
+        notes = notes,
+    )
 
 /** JSON serialization of a [ToolResult]'s raw payload, for embedding in the prompt transcript as
  * `Tool result: ...`. Returns a [JSONObject] for every tool except get_todays_doses, which is a
@@ -340,6 +456,22 @@ fun ToolResult.toJsonValue(): Any = when (this) {
     is ToolResult.AddMedicationOutcome -> addMedicationResultJson(result)
     is ToolResult.UpdateScheduleOutcome -> updateScheduleResultJson(result)
     is ToolResult.MarkDoseTakenOutcome -> markDoseTakenResultJson(result)
+    is ToolResult.LogIncidentOutcome -> logIncidentResultJson(result)
+    is ToolResult.RecentIncidentsOutcome -> org.json.JSONArray(incidents.map { incidentSummaryJson(it) })
+}
+
+private fun incidentSummaryJson(summary: IncidentSummary): JSONObject =
+    JSONObject()
+        .put("type", summary.type)
+        .put("startedAt", summary.startedAt)
+        .put("endedAt", summary.endedAt)
+        .put("durationSeconds", summary.durationSeconds)
+        .put("severity", summary.severity)
+        .put("notes", summary.notes)
+
+private fun logIncidentResultJson(result: LogIncidentResult): JSONObject = when (result) {
+    is LogIncidentResult.NeedsConfirmation -> incidentSummaryJson(result.summary).put("status", "needs_confirmation")
+    is LogIncidentResult.Logged -> incidentSummaryJson(result.summary).put("status", "logged")
 }
 
 private fun scheduleSummaryJson(summary: ScheduleSummary): JSONObject =

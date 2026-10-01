@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tymed.app.AppContainer
 import com.tymed.app.data.repository.DEFAULT_FOLLOW_UP_MINUTES
+import com.tymed.app.ui.AiAssistantPreference
 import com.tymed.app.util.TimeFormatPreference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
                 followUpMinutesInput = settings.getFollowUpMinutes().toString(),
             )
             TimeFormatPreference.use24Hour = _uiState.value.use24HourFormat
+            AiAssistantPreference.enabled = _uiState.value.aiAssistantEnabled
         }
     }
 
@@ -43,6 +45,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun setAiAssistantEnabled(value: Boolean) {
         viewModelScope.launch {
             container.settingsRepository.setAiAssistantEnabled(value)
+            AiAssistantPreference.enabled = value
             _uiState.update { it.copy(aiAssistantEnabled = value) }
         }
     }

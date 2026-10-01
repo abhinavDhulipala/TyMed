@@ -45,6 +45,28 @@ fun formatInstantTime(isoInstant: String): String {
     return formatTime("%02d:%02d".format(zoned.hour, zoned.minute))
 }
 
+/** The local calendar date an ISO instant string falls on, e.g. for grouping/labeling
+ * [Incident]-style timestamps the same way [IntakeLog] rows are labeled by [formatDateLabel].
+ * Falls back to today's date if the string isn't parseable. */
+fun formatInstantDate(isoInstant: String): String =
+    try {
+        formatDateLabel(todayDateString(Instant.parse(isoInstant).atZone(ZoneId.systemDefault()).toLocalDate()))
+    } catch (error: Exception) {
+        formatDateLabel(todayDateString())
+    }
+
+/** "1h 05m", "5m 30s", or "45s" — whichever units apply, dropping leading zero units. */
+fun formatDurationSeconds(totalSeconds: Long): String {
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0 -> "%dh %02dm".format(hours, minutes)
+        minutes > 0 -> "%dm %02ds".format(minutes, seconds)
+        else -> "%ds".format(seconds)
+    }
+}
+
 fun formatDateLabel(dateStr: String): String {
     val today = todayDateString()
     val yesterday = todayDateString(LocalDate.now().minusDays(1))

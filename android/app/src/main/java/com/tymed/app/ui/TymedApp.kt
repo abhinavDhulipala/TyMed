@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -33,6 +34,8 @@ import com.tymed.app.ui.assistant.AssistantScreen
 import com.tymed.app.ui.doses.DayScreen
 import com.tymed.app.ui.doses.DoseScreen
 import com.tymed.app.ui.doses.TodayScreen
+import com.tymed.app.ui.incidents.IncidentFormScreen
+import com.tymed.app.ui.incidents.IncidentsListScreen
 import com.tymed.app.ui.medications.MedicationFormScreen
 import com.tymed.app.ui.medications.MedicationsListScreen
 import com.tymed.app.ui.settings.SettingsScreen
@@ -41,11 +44,12 @@ import kotlinx.coroutines.launch
 private sealed class Tab(val route: String, val label: String) {
     data object Today : Tab("today", "Today")
     data object Medications : Tab("medications", "Medications")
+    data object Incidents : Tab("incidents", "Incidents")
     data object Assistant : Tab("assistant", "Assistant")
     data object Settings : Tab("settings", "Settings")
 }
 
-private val TABS = listOf(Tab.Today, Tab.Medications, Tab.Assistant, Tab.Settings)
+private val TABS = listOf(Tab.Today, Tab.Medications, Tab.Incidents, Tab.Assistant, Tab.Settings)
 
 @Composable
 fun TymedApp(container: AppContainer) {
@@ -55,6 +59,8 @@ fun TymedApp(container: AppContainer) {
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     LaunchedEffect(Unit) {
+        AiAssistantPreference.enabled = container.settingsRepository.getAiAssistantEnabled()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -68,11 +74,14 @@ fun TymedApp(container: AppContainer) {
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
+    // Collapsed (not just hidden) when the assistant is off, to actually free up bottom-bar
+    // space — not everyone wants an on-device model running.
+    val visibleTabs = TABS.filter { it != Tab.Assistant || AiAssistantPreference.enabled }
 
     Scaffold(
         bottomBar = {
             NavigationBar {
-                TABS.forEach { tab ->
+                visibleTabs.forEach { tab ->
                     NavigationBarItem(
                         selected = currentRoute?.hierarchy?.any { it.route == tab.route } == true,
                         onClick = {
@@ -132,6 +141,31 @@ fun TymedApp(container: AppContainer) {
                 )
             }
 
+            composable(Tab.Incidents.route) {
+                IncidentsListScreen(
+                    onIncidentClick = { id -> navController.navigate("incidents/$id") },
+                    onAddClick = { navController.navigate("incidents/new") },
+                )
+            }
+            composable("incidents/new") {
+                IncidentFormScreen(
+                    incidentId = null,
+                    onSaved = { navController.popBackStack() },
+                    onDeleted = { navController.popBackStack() },
+                )
+            }
+            composable(
+                "incidents/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { entry ->
+                val id = entry.arguments?.getLong("id") ?: return@composable
+                IncidentFormScreen(
+                    incidentId = id,
+                    onSaved = { navController.popBackStack() },
+                    onDeleted = { navController.popBackStack(Tab.Incidents.route, inclusive = false) },
+                )
+            }
+
             composable(Tab.Assistant.route) { AssistantScreen() }
             composable(Tab.Settings.route) { SettingsScreen() }
 
@@ -159,6 +193,7 @@ fun TymedApp(container: AppContainer) {
 private fun tabIcon(tab: Tab) = when (tab) {
     Tab.Today -> Icons.Default.Today
     Tab.Medications -> Icons.Default.MedicalServices
+    Tab.Incidents -> Icons.Default.Warning
     Tab.Assistant -> Icons.AutoMirrored.Filled.Chat
     Tab.Settings -> Icons.Default.Settings
 }

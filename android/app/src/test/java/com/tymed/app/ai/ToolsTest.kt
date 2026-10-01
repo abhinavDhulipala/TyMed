@@ -3,6 +3,7 @@ package com.tymed.app.ai
 import com.tymed.app.data.FakeAlarmScheduler
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.repository.DoseActions
+import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationInput
 import com.tymed.app.data.repository.MedicationRepository
@@ -22,6 +23,7 @@ import org.robolectric.RobolectricTestRunner
 class ToolsTest {
     private lateinit var medications: MedicationRepository
     private lateinit var logs: IntakeLogRepository
+    private lateinit var incidents: IncidentRepository
     private lateinit var alarmScheduler: FakeAlarmScheduler
     private lateinit var tools: Tools
 
@@ -31,10 +33,11 @@ class ToolsTest {
         medications = MedicationRepository(db.medicationDao())
         val schedules = ScheduleRepository(db.scheduleDao())
         logs = IntakeLogRepository(db.intakeLogDao(), db.scheduleDao())
+        incidents = IncidentRepository(db.incidentDao())
         alarmScheduler = FakeAlarmScheduler()
         val doseActions = DoseActions(logs, medications, schedules, alarmScheduler)
         val sync = ScheduleSyncRepository(schedules, alarmScheduler)
-        tools = Tools(medications, schedules, logs, sync, alarmScheduler, doseActions)
+        tools = Tools(medications, schedules, logs, sync, alarmScheduler, doseActions, incidents)
     }
 
     @Test
@@ -118,6 +121,62 @@ class ToolsTest {
     fun `mark_dose_taken reports not_found when nothing pending matches`() = runTest {
         val result = tools.markDoseTaken("Nonexistent", null, confirmed = true)
         assertTrue(result is MarkDoseTakenResult.NotFound)
+    }
+
+    @Test
+    fun `log_incident returns needs_confirmation before writing anything`() = runTest {
+        val result = tools.logIncident("Seizure", null, 45, null, null, confirmed = false)
+
+        assertTrue(result is LogIncidentResult.NeedsConfirmation)
+        assertTrue(incidents.listIncidents().isEmpty())
+    }
+
+    @Test
+    fun `log_incident writes once confirmed, with the computed end time and duration`() = runTest {
+        val result = tools.logIncident("Seizure", null, 45, "mild", "In the yard", confirmed = true)
+
+        assertTrue(result is LogIncidentResult.Logged)
+        val saved = incidents.listIncidents().single()
+        assertEquals("Seizure", saved.type)
+        assertEquals("mild", saved.severity)
+        assertEquals("In the yard", saved.notes)
+        assertTrue(saved.endedAt != null)
+    }
+
+    @Test
+    fun `log_incident with no durationSeconds logs it as still ongoing`() = runTest {
+        tools.logIncident("Seizure", null, null, null, null, confirmed = true)
+
+        val saved = incidents.listIncidents().single()
+        assertEquals(null, saved.endedAt)
+    }
+
+    @Test
+    fun `log_incident rejects a blank type`() = runTest {
+        val result = tools.runTool("log_incident", mapOf("type" to "", "confirmed" to true))
+        assertTrue(result is ToolResult.Error)
+    }
+
+    @Test
+    fun `get_recent_incidents returns the most recently logged incidents first`() = runTest {
+        tools.logIncident("Seizure", 10, 30, null, null, confirmed = true)
+        tools.logIncident("Vomiting", 5, null, null, null, confirmed = true)
+
+        val recent = tools.getRecentIncidents(null, null)
+
+        assertEquals(2, recent.size)
+        assertEquals("Vomiting", recent.first().type)
+    }
+
+    @Test
+    fun `get_recent_incidents filters by type`() = runTest {
+        tools.logIncident("Seizure", null, 30, null, null, confirmed = true)
+        tools.logIncident("Vomiting", null, null, null, null, confirmed = true)
+
+        val recent = tools.getRecentIncidents("Seizure", null)
+
+        assertEquals(1, recent.size)
+        assertEquals("Seizure", recent.first().type)
     }
 
     @Test
