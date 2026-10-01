@@ -23,7 +23,7 @@ class IncidentRepositoryTest {
     private fun input(
         type: String = "Seizure",
         startedAt: String = Instant.now().minusSeconds(90).toString(),
-        endedAt: String? = Instant.now().toString(),
+        endedAt: String = Instant.now().toString(),
         severity: String? = null,
         notes: String? = null,
     ) = IncidentInput(type, startedAt, endedAt, severity, notes)
@@ -58,19 +58,6 @@ class IncidentRepositoryTest {
         repository.deleteIncident(id)
 
         assertNull(repository.getIncident(id))
-    }
-
-    @Test
-    fun `endIncidentNow sets endedAt for an ongoing incident and is a no-op once ended`() = runTest {
-        val id = repository.createIncident(input(endedAt = null))
-        assertNull(repository.getIncident(id)?.endedAt)
-
-        repository.endIncidentNow(id)
-        val endedAt = repository.getIncident(id)?.endedAt
-        assertNotNull(endedAt)
-
-        repository.endIncidentNow(id)
-        assertEquals(endedAt, repository.getIncident(id)?.endedAt)
     }
 
     @Test

@@ -57,11 +57,7 @@ fun IncidentsListScreen(
                 verticalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
             ) {
                 items(incidents) { incident ->
-                    IncidentCard(
-                        incident = incident,
-                        onClick = { onIncidentClick(incident.id) },
-                        onStopClick = { viewModel.endNow(incident.id) },
-                    )
+                    IncidentCard(incident = incident, onClick = { onIncidentClick(incident.id) })
                 }
             }
         }

@@ -10,7 +10,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -89,33 +88,24 @@ fun IncidentForm(
             }
         }
 
+        item { Text("Duration", color = TymedColors.textMuted) }
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
             ) {
-                Text("Still ongoing")
-                Switch(checked = values.ongoing, onCheckedChange = { onValuesChange(values.copy(ongoing = it)) })
-            }
-        }
-
-        if (!values.ongoing) {
-            item { Text("Ended", color = TymedColors.textMuted) }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedTextField(
-                        value = values.endDate,
-                        onValueChange = { onValuesChange(values.copy(endDate = it)) },
-                        label = { Text("Date (YYYY-MM-DD)") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    TimePickerButton(value = values.endTime, onValueChange = { onValuesChange(values.copy(endTime = it)) })
-                }
+                OutlinedTextField(
+                    value = values.durationMinutes,
+                    onValueChange = { onValuesChange(values.copy(durationMinutes = it.filter(Char::isDigit))) },
+                    label = { Text("Minutes") },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = values.durationSeconds,
+                    onValueChange = { onValuesChange(values.copy(durationSeconds = it.filter(Char::isDigit))) },
+                    label = { Text("Seconds") },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 

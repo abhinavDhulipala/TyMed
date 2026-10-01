@@ -7,9 +7,11 @@ import java.time.Duration
 import java.time.Instant
 
 /** A single occurrence of something notable that happened — a seizure, a vomiting episode,
- * a missed-dose reaction, or anything else with a start time and (eventually) an end time.
- * [type] is free text rather than a fixed enum so the same table covers whatever the user wants
- * to track, while still working great out of the box for seizure logging. */
+ * a missed-dose reaction, or anything else with a start time and an end time. [type] is free
+ * text rather than a fixed enum so the same table covers whatever the user wants to track, while
+ * still working great out of the box for seizure logging. Always logged after the fact (both
+ * [startedAt] and [endedAt] required) rather than with a live "still ongoing" timer — someone
+ * logging a seizure is almost always doing so once it's over, not mid-event. */
 @Entity(tableName = "incidents")
 data class Incident(
     @PrimaryKey(autoGenerate = true)
@@ -19,7 +21,7 @@ data class Incident(
     @ColumnInfo(name = "started_at")
     val startedAt: String,
     @ColumnInfo(name = "ended_at")
-    val endedAt: String? = null,
+    val endedAt: String,
     @ColumnInfo(name = "severity")
     val severity: String? = null,
     @ColumnInfo(name = "notes")
@@ -37,7 +39,6 @@ object IncidentSeverity {
 }
 
 /** Derived rather than stored, so it can never go stale relative to [Incident.startedAt]/
- * [Incident.endedAt]. For an ongoing incident ([Incident.endedAt] is null), measures up to
- * [now] so a running timer in the UI keeps advancing. */
-fun Incident.durationSeconds(now: Instant = Instant.now()): Long =
-    Duration.between(Instant.parse(startedAt), endedAt?.let(Instant::parse) ?: now).seconds
+ * [Incident.endedAt]. */
+fun Incident.durationSeconds(): Long =
+    Duration.between(Instant.parse(startedAt), Instant.parse(endedAt)).seconds

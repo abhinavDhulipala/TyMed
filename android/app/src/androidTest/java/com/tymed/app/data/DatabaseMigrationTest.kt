@@ -136,12 +136,12 @@ class DatabaseMigrationTest {
 
         // Opens the same file through Room at its exact absolute path — exactly what
         // TymedDatabase.getInstance() does in production — exercising the real
-        // onUpgrade -> MIGRATION_4_5 -> MIGRATION_5_6 -> onValidateSchema path, which throws
-        // immediately if these entities don't structurally match what's actually on disk. Both
-        // migrations are required here (not just MIGRATION_4_5) since the legacy file is still at
-        // version 4 and the database's declared version has since moved to 6.
+        // onUpgrade -> MIGRATION_4_5 -> MIGRATION_5_6 -> MIGRATION_6_7 -> onValidateSchema path,
+        // which throws immediately if these entities don't structurally match what's actually on
+        // disk. All three migrations are required here (not just MIGRATION_4_5) since the legacy
+        // file is still at version 4 and the database's declared version has since moved to 7.
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
         try {
             runBlocking {
@@ -222,7 +222,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
         try {
             runBlocking {
@@ -242,6 +242,94 @@ class DatabaseMigrationTest {
                 val incident = db.incidentDao().getById(incidentId)
                 assertEquals("Seizure", incident?.type)
                 assertEquals("2026-09-20T08:01:30Z", incident?.endedAt)
+            }
+        } finally {
+            db.close()
+            dbFile.delete()
+        }
+    }
+
+    /** Proves [MIGRATION_6_7]'s backfill: a row written while `ended_at` could still be null (the
+     * old "still ongoing" state) comes out the other side with `ended_at` set to its own
+     * `started_at` — a zero-duration instant — rather than losing the row or leaving `ended_at`
+     * null, which the now-non-nullable [com.tymed.app.data.entity.Incident.endedAt] can't hold. */
+    @Test
+    fun migrate6To7BackfillsNullEndedAt() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val dbFile = testDbFile(context)
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { legacy ->
+            legacy.execSQL(
+                """
+                CREATE TABLE medications (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL, dosage TEXT, form TEXT, notes TEXT,
+                    pills_remaining INTEGER, refill_threshold INTEGER, created_at TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE schedules (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, time_of_day TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                    notification_ids TEXT, days_of_week TEXT, recurrence_type TEXT NOT NULL DEFAULT 'daily',
+                    start_date TEXT, end_date TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE intake_logs (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, schedule_id INTEGER, scheduled_date TEXT NOT NULL,
+                    scheduled_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', taken_at TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE,
+                    FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL("CREATE TABLE app_settings (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)")
+            legacy.execSQL(
+                """
+                CREATE TABLE incidents (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT,
+                    severity TEXT, notes TEXT, created_at TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL("CREATE INDEX idx_schedules_medication ON schedules(medication_id)")
+            legacy.execSQL("CREATE UNIQUE INDEX idx_logs_schedule_date ON intake_logs(schedule_id, scheduled_date)")
+            legacy.execSQL("CREATE INDEX idx_logs_date ON intake_logs(scheduled_date)")
+
+            // The "still ongoing" row this migration needs to backfill.
+            legacy.execSQL(
+                "INSERT INTO incidents (id, type, started_at, ended_at, severity, notes, created_at) " +
+                    "VALUES (1, 'Seizure', '2026-09-20T08:00:00Z', NULL, NULL, NULL, '2026-09-20T08:00:00Z')",
+            )
+            // An already-ended row, to prove the backfill doesn't touch it.
+            legacy.execSQL(
+                "INSERT INTO incidents (id, type, started_at, ended_at, severity, notes, created_at) " +
+                    "VALUES (2, 'Vomiting', '2026-09-21T08:00:00Z', '2026-09-21T08:00:05Z', NULL, NULL, '2026-09-21T08:00:05Z')",
+            )
+
+            legacy.version = 6
+        }
+
+        val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(MIGRATION_6_7)
+            .build()
+        try {
+            runBlocking {
+                val backfilled = db.incidentDao().getById(1)
+                assertEquals("2026-09-20T08:00:00Z", backfilled?.endedAt)
+
+                val untouched = db.incidentDao().getById(2)
+                assertEquals("2026-09-21T08:00:05Z", untouched?.endedAt)
             }
         } finally {
             db.close()

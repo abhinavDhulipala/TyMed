@@ -7,7 +7,7 @@ import java.time.Instant
 data class IncidentInput(
     val type: String,
     val startedAt: String,
-    val endedAt: String?,
+    val endedAt: String,
     val severity: String?,
     val notes: String?,
 )
@@ -48,12 +48,5 @@ class IncidentRepository(private val dao: IncidentDao) {
     suspend fun deleteIncident(id: Long) {
         val existing = dao.getById(id) ?: return
         dao.delete(existing)
-    }
-
-    /** The "Stop" action on an in-progress incident — a no-op if it was already ended. */
-    suspend fun endIncidentNow(id: Long) {
-        val existing = dao.getById(id) ?: return
-        if (existing.endedAt != null) return
-        dao.update(existing.copy(endedAt = Instant.now().toString()))
     }
 }

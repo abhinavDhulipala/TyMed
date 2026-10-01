@@ -2,6 +2,7 @@ package com.tymed.app.ai
 
 import com.tymed.app.data.FakeAlarmScheduler
 import com.tymed.app.data.entity.DoseStatus
+import com.tymed.app.data.entity.durationSeconds
 import com.tymed.app.data.repository.DoseActions
 import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
@@ -140,15 +141,15 @@ class ToolsTest {
         assertEquals("Seizure", saved.type)
         assertEquals("mild", saved.severity)
         assertEquals("In the yard", saved.notes)
-        assertTrue(saved.endedAt != null)
+        assertEquals(45L, saved.durationSeconds())
     }
 
     @Test
-    fun `log_incident with no durationSeconds logs it as still ongoing`() = runTest {
+    fun `log_incident with no durationSeconds logs it as an instant event`() = runTest {
         tools.logIncident("Seizure", null, null, null, null, confirmed = true)
 
         val saved = incidents.listIncidents().single()
-        assertEquals(null, saved.endedAt)
+        assertEquals(0L, saved.durationSeconds())
     }
 
     @Test

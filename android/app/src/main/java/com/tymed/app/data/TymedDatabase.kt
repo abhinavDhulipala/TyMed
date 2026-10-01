@@ -125,9 +125,31 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/** Incidents are always logged after the fact now — no more live "still ongoing" timer — so
+ * `ended_at` goes from optional to required. Any row written while that was still possible
+ * (`ended_at IS NULL`) is backfilled to `started_at`, i.e. treated as a zero-duration instant
+ * rather than guessing at how long it actually lasted. SQLite has no `ALTER COLUMN`, so the
+ * table is rebuilt via the same create-copy-drop-rename dance as [MIGRATION_4_5]. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE incidents_new (" +
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                "type TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, " +
+                "severity TEXT, notes TEXT, created_at TEXT NOT NULL)",
+        )
+        db.execSQL(
+            "INSERT INTO incidents_new (id, type, started_at, ended_at, severity, notes, created_at) " +
+                "SELECT id, type, started_at, COALESCE(ended_at, started_at), severity, notes, created_at FROM incidents",
+        )
+        db.execSQL("DROP TABLE incidents")
+        db.execSQL("ALTER TABLE incidents_new RENAME TO incidents")
+    }
+}
+
 @Database(
     entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class, Incident::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class TymedDatabase : RoomDatabase() {
@@ -159,7 +181,7 @@ abstract class TymedDatabase : RoomDatabase() {
             val dbFile = databaseFile(context)
             dbFile.parentFile?.mkdirs()
             return Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, dbFile.absolutePath)
-                .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
         }
     }
