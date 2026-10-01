@@ -136,10 +136,12 @@ class DatabaseMigrationTest {
 
         // Opens the same file through Room at its exact absolute path — exactly what
         // TymedDatabase.getInstance() does in production — exercising the real
-        // onUpgrade -> MIGRATION_4_5 -> onValidateSchema path, which throws immediately if these
-        // entities don't structurally match what's actually on disk.
+        // onUpgrade -> MIGRATION_4_5 -> MIGRATION_5_6 -> onValidateSchema path, which throws
+        // immediately if these entities don't structurally match what's actually on disk. Both
+        // migrations are required here (not just MIGRATION_4_5) since the legacy file is still at
+        // version 4 and the database's declared version has since moved to 6.
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
             .build()
         try {
             runBlocking {
