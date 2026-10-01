@@ -3,6 +3,7 @@ package com.tymed.app.ui.incidents
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tymed.app.AppContainer
+import com.tymed.app.data.entity.durationSeconds
 import com.tymed.app.data.repository.IncidentInput
 import com.tymed.app.util.parseDateStr
 import com.tymed.app.util.todayDateString
@@ -24,8 +25,8 @@ data class IncidentFormValues(
     val type: String = "",
     val startDate: String = todayDateString(),
     val startTime: String = nowTimeString(),
-    val endDate: String = todayDateString(),
-    val endTime: String = nowTimeString(),
+    val durationMinutes: String = "0",
+    val durationSeconds: String = "0",
     val severity: String = "",
     val notes: String = "",
 )
@@ -51,7 +52,7 @@ class IncidentFormViewModel(
                 val incident = container.incidentRepository.getIncident(incidentId)
                 if (incident != null) {
                     val start = Instant.parse(incident.startedAt).atZone(ZoneId.systemDefault())
-                    val end = Instant.parse(incident.endedAt).atZone(ZoneId.systemDefault())
+                    val totalSeconds = incident.durationSeconds()
                     _uiState.update {
                         it.copy(
                             loading = false,
@@ -59,8 +60,8 @@ class IncidentFormViewModel(
                                 type = incident.type,
                                 startDate = todayDateString(start.toLocalDate()),
                                 startTime = "%02d:%02d".format(start.hour, start.minute),
-                                endDate = todayDateString(end.toLocalDate()),
-                                endTime = "%02d:%02d".format(end.hour, end.minute),
+                                durationMinutes = (totalSeconds / 60).toString(),
+                                durationSeconds = (totalSeconds % 60).toString(),
                                 severity = incident.severity ?: "",
                                 notes = incident.notes ?: "",
                             ),
@@ -80,10 +81,12 @@ class IncidentFormViewModel(
     fun submit() {
         val values = _uiState.value.values
         viewModelScope.launch {
+            val start = toInstant(values.startDate, values.startTime)
+            val totalSeconds = (values.durationMinutes.toLongOrNull() ?: 0) * 60 + (values.durationSeconds.toLongOrNull() ?: 0)
             val input = IncidentInput(
                 type = values.type.trim(),
-                startedAt = toInstant(values.startDate, values.startTime).toString(),
-                endedAt = toInstant(values.endDate, values.endTime).toString(),
+                startedAt = start.toString(),
+                endedAt = start.plusSeconds(totalSeconds).toString(),
                 severity = values.severity.ifBlank { null },
                 notes = values.notes.ifBlank { null },
             )

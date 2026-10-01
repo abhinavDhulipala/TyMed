@@ -88,20 +88,24 @@ fun IncidentForm(
             }
         }
 
-        item { Text("Ended", color = TymedColors.textMuted) }
+        item { Text("Duration", color = TymedColors.textMuted) }
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
                 OutlinedTextField(
-                    value = values.endDate,
-                    onValueChange = { onValuesChange(values.copy(endDate = it)) },
-                    label = { Text("Date (YYYY-MM-DD)") },
+                    value = values.durationMinutes,
+                    onValueChange = { onValuesChange(values.copy(durationMinutes = it.filter(Char::isDigit))) },
+                    label = { Text("Minutes") },
                     modifier = Modifier.weight(1f),
                 )
-                TimePickerButton(value = values.endTime, onValueChange = { onValuesChange(values.copy(endTime = it)) })
+                OutlinedTextField(
+                    value = values.durationSeconds,
+                    onValueChange = { onValuesChange(values.copy(durationSeconds = it.filter(Char::isDigit))) },
+                    label = { Text("Seconds") },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
