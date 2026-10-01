@@ -73,8 +73,8 @@ sealed interface MarkDoseTakenResult {
 data class IncidentSummary(
     val type: String,
     val startedAt: String,
-    val endedAt: String?,
-    val durationSeconds: Long?,
+    val endedAt: String,
+    val durationSeconds: Long,
     val severity: String?,
     val notes: String?,
 )
@@ -119,15 +119,16 @@ val TOOL_DESCRIPTIONS: Map<String, String> = linkedMapOf(
         ),
     "log_incident" to (
         "log_incident(type: string, minutesAgo?: number [when it started, minutes before now; default 0 = just " +
-            "now], durationSeconds?: number [how long it lasted, if it's over; omit if it's still happening], " +
-            "severity?: string [\"mild\"|\"moderate\"|\"severe\"], notes?: string) — logs a notable event like a " +
-            "seizure, not just medications. If the user doesn't say what kind of event, ask. Always returns " +
+            "now], durationSeconds?: number [how long it lasted, in seconds; omit if the user didn't say — logged " +
+            "as an instant event], severity?: string [\"mild\"|\"moderate\"|\"severe\"], notes?: string) — logs a " +
+            "notable event that already happened, like a seizure, not just medications. Always after the fact — " +
+            "there's no \"still happening\" state. If the user doesn't say what kind of event, ask. Always returns " +
             "\"needs_confirmation\" first: read the summary back to the user, and only re-call with confirmed:true " +
             "once they've agreed it's right."
         ),
     "get_recent_incidents" to (
         "get_recent_incidents(type?: string, limit?: number [default 10]) — returns recently logged incidents " +
-            "(e.g. seizures), most recent first, each with its duration if it has ended."
+            "(e.g. seizures), most recent first, each with its duration."
         ),
 )
 
@@ -325,13 +326,14 @@ class Tools(
         val trimmedType = type.trim()
         require(trimmedType.isNotEmpty()) { "log_incident requires a non-empty type" }
 
+        val resolvedDurationSeconds = (durationSeconds ?: 0).toLong()
         val startedAt = Instant.now().minusSeconds((minutesAgo ?: 0).toLong() * 60)
-        val endedAt = durationSeconds?.let { startedAt.plusSeconds(it.toLong()) }
+        val endedAt = startedAt.plusSeconds(resolvedDurationSeconds)
         val summary = IncidentSummary(
             type = trimmedType,
             startedAt = startedAt.toString(),
-            endedAt = endedAt?.toString(),
-            durationSeconds = durationSeconds?.toLong(),
+            endedAt = endedAt.toString(),
+            durationSeconds = resolvedDurationSeconds,
             severity = severity?.trim()?.takeIf { it.isNotEmpty() },
             notes = notes?.trim()?.takeIf { it.isNotEmpty() },
         )
@@ -433,7 +435,7 @@ private fun Incident.toSummary(): IncidentSummary =
         type = type,
         startedAt = startedAt,
         endedAt = endedAt,
-        durationSeconds = endedAt?.let { durationSeconds() },
+        durationSeconds = durationSeconds(),
         severity = severity,
         notes = notes,
     )

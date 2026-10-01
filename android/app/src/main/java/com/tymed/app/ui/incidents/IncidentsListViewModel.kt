@@ -18,14 +18,6 @@ class IncidentsListViewModel(private val container: AppContainer) : ViewModel() 
         }
     }
 
-    /** Quick "Stop" action for an in-progress incident, straight from the list row. */
-    fun endNow(incidentId: Long) {
-        viewModelScope.launch {
-            container.incidentRepository.endIncidentNow(incidentId)
-            refresh()
-        }
-    }
-
     init {
         refresh()
     }

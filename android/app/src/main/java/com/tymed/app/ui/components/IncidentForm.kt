@@ -10,7 +10,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -89,33 +88,20 @@ fun IncidentForm(
             }
         }
 
+        item { Text("Ended", color = TymedColors.textMuted) }
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Still ongoing")
-                Switch(checked = values.ongoing, onCheckedChange = { onValuesChange(values.copy(ongoing = it)) })
-            }
-        }
-
-        if (!values.ongoing) {
-            item { Text("Ended", color = TymedColors.textMuted) }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedTextField(
-                        value = values.endDate,
-                        onValueChange = { onValuesChange(values.copy(endDate = it)) },
-                        label = { Text("Date (YYYY-MM-DD)") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    TimePickerButton(value = values.endTime, onValueChange = { onValuesChange(values.copy(endTime = it)) })
-                }
+                OutlinedTextField(
+                    value = values.endDate,
+                    onValueChange = { onValuesChange(values.copy(endDate = it)) },
+                    label = { Text("Date (YYYY-MM-DD)") },
+                    modifier = Modifier.weight(1f),
+                )
+                TimePickerButton(value = values.endTime, onValueChange = { onValuesChange(values.copy(endTime = it)) })
             }
         }
 

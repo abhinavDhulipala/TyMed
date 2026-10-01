@@ -24,7 +24,6 @@ data class IncidentFormValues(
     val type: String = "",
     val startDate: String = todayDateString(),
     val startTime: String = nowTimeString(),
-    val ongoing: Boolean = true,
     val endDate: String = todayDateString(),
     val endTime: String = nowTimeString(),
     val severity: String = "",
@@ -52,7 +51,7 @@ class IncidentFormViewModel(
                 val incident = container.incidentRepository.getIncident(incidentId)
                 if (incident != null) {
                     val start = Instant.parse(incident.startedAt).atZone(ZoneId.systemDefault())
-                    val end = incident.endedAt?.let { Instant.parse(it).atZone(ZoneId.systemDefault()) }
+                    val end = Instant.parse(incident.endedAt).atZone(ZoneId.systemDefault())
                     _uiState.update {
                         it.copy(
                             loading = false,
@@ -60,9 +59,8 @@ class IncidentFormViewModel(
                                 type = incident.type,
                                 startDate = todayDateString(start.toLocalDate()),
                                 startTime = "%02d:%02d".format(start.hour, start.minute),
-                                ongoing = end == null,
-                                endDate = todayDateString((end ?: start).toLocalDate()),
-                                endTime = "%02d:%02d".format((end ?: start).hour, (end ?: start).minute),
+                                endDate = todayDateString(end.toLocalDate()),
+                                endTime = "%02d:%02d".format(end.hour, end.minute),
                                 severity = incident.severity ?: "",
                                 notes = incident.notes ?: "",
                             ),
@@ -85,7 +83,7 @@ class IncidentFormViewModel(
             val input = IncidentInput(
                 type = values.type.trim(),
                 startedAt = toInstant(values.startDate, values.startTime).toString(),
-                endedAt = if (values.ongoing) null else toInstant(values.endDate, values.endTime).toString(),
+                endedAt = toInstant(values.endDate, values.endTime).toString(),
                 severity = values.severity.ifBlank { null },
                 notes = values.notes.ifBlank { null },
             )

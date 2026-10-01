@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,9 +26,7 @@ import com.tymed.app.util.formatInstantDate
 import com.tymed.app.util.formatInstantTime
 
 @Composable
-fun IncidentCard(incident: Incident, onClick: () -> Unit, onStopClick: () -> Unit, modifier: Modifier = Modifier) {
-    val ongoing = incident.endedAt == null
-
+fun IncidentCard(incident: Incident, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -52,14 +49,9 @@ fun IncidentCard(incident: Incident, onClick: () -> Unit, onStopClick: () -> Uni
             }
         }
         Column(horizontalAlignment = Alignment.End) {
-            if (ongoing) {
-                Text(text = "Ongoing", color = TymedColors.warning, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onStopClick) { Text("Stop") }
-            } else {
-                Text(text = formatDurationSeconds(incident.durationSeconds()), color = TymedColors.primary, fontSize = 13.sp)
-                incident.severity?.let {
-                    Text(text = it.replaceFirstChar(Char::uppercase), color = TymedColors.textMuted, fontSize = 12.sp)
-                }
+            Text(text = formatDurationSeconds(incident.durationSeconds()), color = TymedColors.primary, fontSize = 13.sp)
+            incident.severity?.let {
+                Text(text = it.replaceFirstChar(Char::uppercase), color = TymedColors.textMuted, fontSize = 12.sp)
             }
         }
     }
