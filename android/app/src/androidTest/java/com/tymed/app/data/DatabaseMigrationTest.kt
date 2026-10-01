@@ -136,10 +136,12 @@ class DatabaseMigrationTest {
 
         // Opens the same file through Room at its exact absolute path — exactly what
         // TymedDatabase.getInstance() does in production — exercising the real
-        // onUpgrade -> MIGRATION_4_5 -> onValidateSchema path, which throws immediately if these
-        // entities don't structurally match what's actually on disk.
+        // onUpgrade -> MIGRATION_4_5 -> MIGRATION_5_6 -> onValidateSchema path, which throws
+        // immediately if these entities don't structurally match what's actually on disk. Both
+        // migrations are required here (not just MIGRATION_4_5) since the legacy file is still at
+        // version 4 and the database's declared version has since moved to 6.
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
             .build()
         try {
             runBlocking {
@@ -156,6 +158,90 @@ class DatabaseMigrationTest {
                 val log = db.intakeLogDao().getById(1)
                 assertEquals("taken", log?.status)
                 assertEquals("2026-09-20T08:05:00.000Z", log?.takenAt)
+            }
+        } finally {
+            db.close()
+            dbFile.delete()
+        }
+    }
+
+    /** Every real install is already at version 5 (there's no pre-Room version to simulate here,
+     * unlike [migrate4To5OnLegacySchemaPreservesExistingData]) — writes exactly the schema
+     * [MIGRATION_4_5] itself produces, then proves [MIGRATION_5_6] adds a working `incidents`
+     * table on top of it without disturbing anything else. */
+    @Test
+    fun migrate5To6AddsIncidentsTable() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val dbFile = testDbFile(context)
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { legacy ->
+            legacy.execSQL(
+                """
+                CREATE TABLE medications (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL, dosage TEXT, form TEXT, notes TEXT,
+                    pills_remaining INTEGER, refill_threshold INTEGER, created_at TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE schedules (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, time_of_day TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                    notification_ids TEXT, days_of_week TEXT, recurrence_type TEXT NOT NULL DEFAULT 'daily',
+                    start_date TEXT, end_date TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE intake_logs (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, schedule_id INTEGER, scheduled_date TEXT NOT NULL,
+                    scheduled_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', taken_at TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE,
+                    FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL("CREATE TABLE app_settings (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)")
+            legacy.execSQL("CREATE INDEX idx_schedules_medication ON schedules(medication_id)")
+            legacy.execSQL("CREATE UNIQUE INDEX idx_logs_schedule_date ON intake_logs(schedule_id, scheduled_date)")
+            legacy.execSQL("CREATE INDEX idx_logs_date ON intake_logs(scheduled_date)")
+
+            legacy.execSQL(
+                "INSERT INTO medications (id, name, dosage, form, notes, pills_remaining, refill_threshold, created_at) " +
+                    "VALUES (1, 'Aspirin', '81mg', 'tablet', NULL, 30, 5, '2026-01-01T00:00:00.000Z')",
+            )
+
+            legacy.version = 5
+        }
+
+        val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .build()
+        try {
+            runBlocking {
+                val medication = db.medicationDao().getById(1)
+                assertEquals("Aspirin", medication?.name)
+
+                val incidentId = db.incidentDao().insert(
+                    com.tymed.app.data.entity.Incident(
+                        type = "Seizure",
+                        startedAt = "2026-09-20T08:00:00Z",
+                        endedAt = "2026-09-20T08:01:30Z",
+                        severity = "mild",
+                        notes = null,
+                        createdAt = "2026-09-20T08:01:30Z",
+                    ),
+                )
+                val incident = db.incidentDao().getById(incidentId)
+                assertEquals("Seizure", incident?.type)
+                assertEquals("2026-09-20T08:01:30Z", incident?.endedAt)
             }
         } finally {
             db.close()

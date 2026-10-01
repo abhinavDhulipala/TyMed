@@ -8,6 +8,7 @@ import com.tymed.app.alarm.AndroidAlarmScheduler
 import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.TymedDatabase
 import com.tymed.app.data.repository.DoseActions
+import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationRepository
 import com.tymed.app.data.repository.ScheduleRepository
@@ -25,6 +26,7 @@ class AppContainer(context: Context) {
     val scheduleRepository = ScheduleRepository(database.scheduleDao())
     val intakeLogRepository = IntakeLogRepository(database.intakeLogDao(), database.scheduleDao())
     val settingsRepository = SettingsRepository(database.appSettingDao())
+    val incidentRepository = IncidentRepository(database.incidentDao())
 
     val doseActions = DoseActions(intakeLogRepository, medicationRepository, scheduleRepository, alarmScheduler)
     val scheduleSyncRepository = ScheduleSyncRepository(scheduleRepository, alarmScheduler)
@@ -32,6 +34,14 @@ class AppContainer(context: Context) {
     // Retained here (not per-ViewModel) so the prepared Gemini Nano model survives navigating
     // away from and back to the Assistant tab, matching the old app-process-lifetime module.
     val geminiNanoClient = GeminiNanoClient()
-    private val tools = Tools(medicationRepository, scheduleRepository, intakeLogRepository, scheduleSyncRepository, alarmScheduler, doseActions)
+    private val tools = Tools(
+        medicationRepository,
+        scheduleRepository,
+        intakeLogRepository,
+        scheduleSyncRepository,
+        alarmScheduler,
+        doseActions,
+        incidentRepository,
+    )
     val aiOrchestrator = AiOrchestrator(medicationRepository, tools, geminiNanoClient)
 }
