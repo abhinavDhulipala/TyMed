@@ -342,12 +342,17 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun cancelSnoozeChain() {
-        cancelAlarm(this, requestCode + SNOOZE_REQUEST_CODE_OFFSET)
+        cancelAlarm(this, scheduleId + SNOOZE_REQUEST_CODE_OFFSET)
     }
 
     private fun armSnooze() {
         val triggerAt = System.currentTimeMillis() + selectedSnoozeMinutes * 60_000L
-        val snoozeRequestCode = requestCode + SNOOZE_REQUEST_CODE_OFFSET
+        // Always keyed off the schedule's own id — not this screen's requestCode — so a second
+        // (or third...) snooze reuses the same request code instead of compounding into a new
+        // one each time. Compounding would mean cancelDoseReminders' fixed
+        // scheduleId + SNOOZE_REQUEST_CODE_OFFSET could no longer find the pending alarm once
+        // snoozed more than once, leaving it armed even after Taken is pressed.
+        val snoozeRequestCode = scheduleId + SNOOZE_REQUEST_CODE_OFFSET
 
         val medicationName = intent.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
