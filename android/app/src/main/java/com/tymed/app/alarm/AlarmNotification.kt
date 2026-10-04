@@ -42,6 +42,7 @@ fun buildAlarmNotification(
     medicationId: Int,
     medicationName: String,
     dosage: String?,
+    ringingSinceMillis: Long,
 ): Notification {
     val fullScreenIntent = Intent(context, AlarmActivity::class.java).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -50,6 +51,7 @@ fun buildAlarmNotification(
         putExtra(AlarmReceiver.EXTRA_MEDICATION_ID, medicationId)
         putExtra(AlarmReceiver.EXTRA_MEDICATION_NAME, medicationName)
         putExtra(AlarmReceiver.EXTRA_DOSAGE, dosage)
+        putExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, ringingSinceMillis)
     }
     val fullScreenPendingIntent = PendingIntent.getActivity(
         context,
@@ -86,8 +88,17 @@ fun postFallbackAlarmNotification(
     medicationId: Int,
     medicationName: String,
     dosage: String?,
+    ringingSinceMillis: Long,
 ) {
     ensureAlarmChannel(context)
-    val notification = buildAlarmNotification(context, requestCode, scheduleId, medicationId, medicationName, dosage)
+    val notification = buildAlarmNotification(
+        context,
+        requestCode,
+        scheduleId,
+        medicationId,
+        medicationName,
+        dosage,
+        ringingSinceMillis,
+    )
     NotificationManagerCompat.from(context).notify(ALARM_NOTIFICATION_ID, notification)
 }

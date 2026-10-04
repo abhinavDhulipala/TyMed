@@ -32,6 +32,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val EXTRA_DAYS_OF_WEEK = "daysOfWeek"
         const val EXTRA_START_DATE = "startDate"
         const val EXTRA_END_DATE = "endDate"
+        const val EXTRA_RINGING_SINCE_MILLIS = "ringingSinceMillis"
 
         private fun addDays(dateStr: String, days: Int): String = LocalDate.parse(dateStr).plusDays(days.toLong()).toString()
 
@@ -67,6 +68,18 @@ class AlarmReceiver : BroadcastReceiver() {
         // (daily poll) only rings on days the recurrence rule matches; the rearm below still
         // happens regardless (until past the end date) so the next active day isn't affected.
         if (!isPrimary || isActiveOn(recurrenceType, daysOfWeek, startDate, endDate, todayDateString())) {
+            val ringingSinceMillis = System.currentTimeMillis()
+            RingingAlarmTracker.start(
+                RingingAlarmInfo(
+                    requestCode = requestCode,
+                    scheduleId = scheduleId,
+                    medicationId = medicationId,
+                    medicationName = medicationName,
+                    dosage = dosage,
+                    ringingSinceMillis = ringingSinceMillis,
+                ),
+            )
+
             val serviceIntent = Intent(context, AlarmRingService::class.java).apply {
                 action = AlarmRingService.ACTION_RING
                 putExtra(EXTRA_REQUEST_CODE, requestCode)
@@ -74,6 +87,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_MEDICATION_ID, medicationId)
                 putExtra(EXTRA_MEDICATION_NAME, medicationName)
                 putExtra(EXTRA_DOSAGE, dosage)
+                putExtra(EXTRA_RINGING_SINCE_MILLIS, ringingSinceMillis)
             }
             try {
                 // startForegroundService() itself requires API 26; below that, a plain
@@ -89,7 +103,15 @@ class AlarmReceiver : BroadcastReceiver() {
                 // process that's never run since a reboot) — fall back to a plain notification
                 // rather than letting the exception crash the whole app.
                 Log.w(TAG, "startForegroundService rejected, falling back to a plain notification", error)
-                postFallbackAlarmNotification(context, requestCode, scheduleId, medicationId, medicationName, dosage)
+                postFallbackAlarmNotification(
+                    context,
+                    requestCode,
+                    scheduleId,
+                    medicationId,
+                    medicationName,
+                    dosage,
+                    ringingSinceMillis,
+                )
             }
         }
 

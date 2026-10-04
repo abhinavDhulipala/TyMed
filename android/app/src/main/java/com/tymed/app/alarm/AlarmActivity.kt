@@ -19,6 +19,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.lifecycleScope
 import com.tymed.app.MainActivity
 import com.tymed.app.TymedApplication
@@ -47,6 +48,14 @@ class AlarmActivity : ComponentActivity() {
     private var remainingLabel: TextView? = null
     private var mascotView: MascotView? = null
 
+    /** The settings-configured follow-up minutes is folded into the offered options (and
+     * pre-selected) so the alert screen's choice defaults to Settings, but can be overridden
+     * per-alert without changing that stored default. */
+    private var snoozeOptions: List<Int> = DEFAULT_SNOOZE_OPTIONS_MINUTES
+    private var selectedSnoozeMinutes = DEFAULT_SNOOZE_OPTIONS_MINUTES.first()
+    private var snoozeButton: Button? = null
+    private val snoozeChipButtons = mutableListOf<Pair<Int, Button>>()
+
     private val tickRunnable = object : Runnable {
         override fun run() {
             val elapsed = System.currentTimeMillis() - ringingSinceMillis
@@ -72,10 +81,16 @@ class AlarmActivity : ComponentActivity() {
         medicationId = intent.getIntExtra(AlarmReceiver.EXTRA_MEDICATION_ID, -1)
         val medicationName = intent.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
+        ringingSinceMillis = intent.getLongExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, -1L)
+            .takeIf { it > 0 } ?: System.currentTimeMillis()
+
+        val configuredMinutes = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(PREF_FOLLOW_UP_MINUTES, DEFAULT_SNOOZE_OPTIONS_MINUTES.first())
+        snoozeOptions = (listOf(configuredMinutes) + DEFAULT_SNOOZE_OPTIONS_MINUTES).distinct().sorted()
+        selectedSnoozeMinutes = configuredMinutes
 
         setContentView(buildLayout(medicationName, dosage))
 
-        ringingSinceMillis = System.currentTimeMillis()
         tickHandler.post(tickRunnable)
     }
 
@@ -157,6 +172,18 @@ class AlarmActivity : ComponentActivity() {
         }
         root.addView(remainingLabel)
 
+        root.addView(
+            TextView(this).apply {
+                text = "Snooze for"
+                setTextColor(Color.WHITE)
+                alpha = 0.85f
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setPadding(0, 40, 0, 0)
+            },
+        )
+        root.addView(buildSnoozeChipRow())
+
         val buttonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -165,16 +192,85 @@ class AlarmActivity : ComponentActivity() {
 
         buttonRow.addView(pillButton("Taken", primary = true).apply { setOnClickListener { onTaken() } })
         buttonRow.addView(
-            pillButton("Snooze", primary = false).apply {
+            pillButton(snoozeButtonLabel(), primary = false).apply {
                 layoutParams = (layoutParams as LinearLayout.LayoutParams).apply {
                     marginStart = (20 * resources.displayMetrics.density).toInt()
                 }
                 setOnClickListener { onSnooze() }
-            },
+            }.also { snoozeButton = it },
         )
 
         root.addView(buttonRow)
         return root
+    }
+
+    private fun snoozeButtonLabel() = "Snooze ${selectedSnoozeMinutes}m"
+
+    /** A row of tappable duration chips so the snooze length can be chosen per-alert, right on
+     * the alert screen, instead of only ever using the fixed value from Settings. */
+    private fun buildSnoozeChipRow(): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 16, 0, 0)
+        }
+        snoozeChipButtons.clear()
+        snoozeOptions.forEachIndexed { index, minutes ->
+            val chip = snoozeChip(minutes).apply {
+                if (index > 0) {
+                    layoutParams = (layoutParams as LinearLayout.LayoutParams).apply {
+                        marginStart = (12 * resources.displayMetrics.density).toInt()
+                    }
+                }
+                setOnClickListener {
+                    selectedSnoozeMinutes = minutes
+                    updateSnoozeChipStyles()
+                    snoozeButton?.text = snoozeButtonLabel()
+                }
+            }
+            snoozeChipButtons.add(minutes to chip)
+            row.addView(chip)
+        }
+        updateSnoozeChipStyles()
+        return row
+    }
+
+    private fun snoozeChip(minutes: Int): Button {
+        val density = resources.displayMetrics.density
+        return Button(this).apply {
+            text = "${minutes}m"
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = 13f
+            stateListAnimator = null
+            val hPad = (18 * density).toInt()
+            val vPad = (10 * density).toInt()
+            setPadding(hPad, vPad, hPad, vPad)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+    }
+
+    private fun updateSnoozeChipStyles() {
+        val density = resources.displayMetrics.density
+        val corner = 18f * density
+        snoozeChipButtons.forEach { (minutes, button) ->
+            val selected = minutes == selectedSnoozeMinutes
+            val fill = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = corner
+                if (selected) {
+                    setColor(Color.parseColor("#FFF9EF"))
+                } else {
+                    setColor(Color.TRANSPARENT)
+                    setStroke((1.5f * density).toInt(), Color.parseColor("#88FFFFFF"))
+                }
+            }
+            val rippleColor = if (selected) Color.parseColor("#332E4A32") else Color.parseColor("#33FFFFFF")
+            button.background = RippleDrawable(ColorStateList.valueOf(rippleColor), fill, null)
+            button.setTextColor(if (selected) Color.parseColor(BACKGROUND_GREEN) else Color.WHITE)
+        }
     }
 
     /**
@@ -214,16 +310,28 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun onTaken() {
-        stopRingingService()
+        dismissRingingState()
         cancelSnoozeChain()
         markTakenThenOpenApp()
     }
 
     private fun onSnooze() {
-        stopRingingService()
+        dismissRingingState()
         armSnooze()
         openApp()
         finish()
+    }
+
+    /** Clears the in-memory "an alert is firing" flag and the notification itself up front, and
+     * synchronously — not just whatever [AlarmRingService] gets around to doing asynchronously —
+     * so both stay in sync with Taken/Snooze regardless of which path posted the notification
+     * (the normal ringing-service path removes it too via stopForeground, but the no-service
+     * fallback path, used when the OS refuses to start that foreground service, never otherwise
+     * gets cancelled). */
+    private fun dismissRingingState() {
+        RingingAlarmTracker.clear()
+        NotificationManagerCompat.from(this).cancel(ALARM_NOTIFICATION_ID)
+        stopRingingService()
     }
 
     private fun stopRingingService() {
@@ -238,9 +346,7 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun armSnooze() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val minutes = prefs.getInt(PREF_FOLLOW_UP_MINUTES, 5)
-        val triggerAt = System.currentTimeMillis() + minutes * 60_000L
+        val triggerAt = System.currentTimeMillis() + selectedSnoozeMinutes * 60_000L
         val snoozeRequestCode = requestCode + SNOOZE_REQUEST_CODE_OFFSET
 
         val medicationName = intent.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
@@ -295,5 +401,6 @@ class AlarmActivity : ComponentActivity() {
         private const val COUNTDOWN_MILLIS = 5 * 60 * 1000L
         // Keep in sync with @color/alarm_background (the alarm theme's status/navigation bars).
         private const val BACKGROUND_GREEN = "#1F3325"
+        private val DEFAULT_SNOOZE_OPTIONS_MINUTES = listOf(5, 10, 15, 30)
     }
 }

@@ -48,9 +48,19 @@ class AlarmRingService : Service() {
         val medicationId = intent?.getIntExtra(AlarmReceiver.EXTRA_MEDICATION_ID, -1) ?: -1
         val medicationName = intent?.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent?.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
+        val ringingSinceMillis = intent?.getLongExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, -1L)
+            ?.takeIf { it > 0 } ?: System.currentTimeMillis()
 
         ensureAlarmChannel(this)
-        val notification = buildAlarmNotification(this, requestCode, scheduleId, medicationId, medicationName, dosage)
+        val notification = buildAlarmNotification(
+            this,
+            requestCode,
+            scheduleId,
+            medicationId,
+            medicationName,
+            dosage,
+            ringingSinceMillis,
+        )
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -63,7 +73,15 @@ class AlarmRingService : Service() {
             // restrictions on a process that's never run since a reboot) — fall back to a plain
             // notification rather than letting the exception crash the whole app.
             Log.w(TAG, "startForeground rejected, falling back to a plain notification", error)
-            postFallbackAlarmNotification(this, requestCode, scheduleId, medicationId, medicationName, dosage)
+            postFallbackAlarmNotification(
+                this,
+                requestCode,
+                scheduleId,
+                medicationId,
+                medicationName,
+                dosage,
+                ringingSinceMillis,
+            )
             stopSelf()
             return
         }
