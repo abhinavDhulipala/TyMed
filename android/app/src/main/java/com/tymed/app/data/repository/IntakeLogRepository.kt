@@ -99,4 +99,7 @@ class IntakeLogRepository(
         }
 
     suspend fun getTodayStatusForSchedule(scheduleId: Long): String? = logDao.getStatus(scheduleId, todayDateString())
+
+    /** Every intake log ever recorded, for a full data export. */
+    suspend fun listAllLogs(): List<IntakeLog> = logDao.getAll()
 }

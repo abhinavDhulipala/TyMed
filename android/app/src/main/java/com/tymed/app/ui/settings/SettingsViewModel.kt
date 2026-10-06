@@ -4,12 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tymed.app.AppContainer
 import com.tymed.app.data.repository.DEFAULT_FOLLOW_UP_MINUTES
+import com.tymed.app.export.ExportFormat
+import com.tymed.app.export.render
 import com.tymed.app.ui.AiAssistantPreference
 import com.tymed.app.util.TimeFormatPreference
+import java.io.File
+import java.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SettingsUiState(
     val use24HourFormat: Boolean = false,
@@ -61,5 +67,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             container.alarmScheduler.setFollowUpMinutes(minutes)
             _uiState.update { it.copy(followUpMinutesInput = minutes.toString()) }
         }
+    }
+
+    /** Renders a full export in the given [format] to a timestamped file under
+     * `cacheDir/exports/` and returns it, for the caller to hand to a FileProvider-backed share
+     * intent. Runs off the main thread since it touches disk and reads the whole database. */
+    suspend fun exportData(format: ExportFormat, cacheDir: File): File = withContext(Dispatchers.IO) {
+        val snapshot = container.exportRepository.loadSnapshot()
+        val bytes = format.render(snapshot)
+        val dir = File(cacheDir, "exports").apply { mkdirs() }
+        File(dir, "tymed-export-${Instant.now().epochSecond}.${format.fileExtension}").apply { writeBytes(bytes) }
     }
 }

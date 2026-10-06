@@ -65,4 +65,7 @@ interface IntakeLogDao {
 
     @Query("SELECT status FROM intake_logs WHERE schedule_id = :scheduleId AND scheduled_date = :date")
     suspend fun getStatus(scheduleId: Long, date: String): String?
+
+    @Query("SELECT * FROM intake_logs ORDER BY scheduled_date, scheduled_time")
+    suspend fun getAll(): List<IntakeLog>
 }
