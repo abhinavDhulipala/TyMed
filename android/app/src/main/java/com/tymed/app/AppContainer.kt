@@ -8,6 +8,7 @@ import com.tymed.app.alarm.AndroidAlarmScheduler
 import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.TymedDatabase
 import com.tymed.app.data.repository.DoseActions
+import com.tymed.app.data.repository.ExportRepository
 import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationRepository
@@ -27,6 +28,13 @@ class AppContainer(context: Context) {
     val intakeLogRepository = IntakeLogRepository(database.intakeLogDao(), database.scheduleDao())
     val settingsRepository = SettingsRepository(database.appSettingDao())
     val incidentRepository = IncidentRepository(database.incidentDao())
+    val exportRepository = ExportRepository(
+        medicationRepository,
+        scheduleRepository,
+        intakeLogRepository,
+        incidentRepository,
+        settingsRepository,
+    )
 
     val doseActions = DoseActions(intakeLogRepository, medicationRepository, scheduleRepository, alarmScheduler)
     val scheduleSyncRepository = ScheduleSyncRepository(scheduleRepository, alarmScheduler)

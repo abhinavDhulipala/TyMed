@@ -1,5 +1,6 @@
 package com.tymed.app.ui.settings
 
+import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,17 +18,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tymed.app.BuildConfig
+import com.tymed.app.export.ExportFormat
 import com.tymed.app.ui.TymedViewModelFactory
 import com.tymed.app.ui.components.Mascot
 import com.tymed.app.ui.rememberAppContainer
 import com.tymed.app.ui.theme.TymedColors
 import com.tymed.app.ui.theme.TymedSpacing
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
@@ -35,6 +41,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val viewModel: SettingsViewModel = viewModel(factory = TymedViewModelFactory(container) { SettingsViewModel(it) })
     val uiState by viewModel.uiState.collectAsState()
     val aiSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
@@ -82,6 +90,34 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     onClick = viewModel::saveFollowUpMinutes,
                     colors = ButtonDefaults.buttonColors(containerColor = TymedColors.primary),
                 ) { Text("Save") }
+            }
+        }
+
+        SettingsSection(title = "Data") {
+            Text(
+                "Export every medication, schedule, dose log, and incident — as JSON, a zipped " +
+                    "CSV per table, or a printable PDF report.",
+                color = TymedColors.textMuted,
+                fontSize = 12.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm)) {
+                ExportFormat.entries.forEach { format ->
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                val file = viewModel.exportData(format, context.cacheDir)
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = format.mimeType
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Export TyMed data"))
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TymedColors.primary),
+                    ) { Text(format.label) }
+                }
             }
         }
 
