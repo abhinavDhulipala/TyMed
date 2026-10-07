@@ -9,6 +9,7 @@ import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.TymedDatabase
 import com.tymed.app.data.repository.DoseActions
 import com.tymed.app.data.repository.ExportRepository
+import com.tymed.app.data.repository.ImportRepository
 import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationRepository
@@ -35,6 +36,7 @@ class AppContainer(context: Context) {
         incidentRepository,
         settingsRepository,
     )
+    val importRepository = ImportRepository(database, medicationRepository, scheduleRepository, alarmScheduler)
 
     val doseActions = DoseActions(intakeLogRepository, medicationRepository, scheduleRepository, alarmScheduler)
     val scheduleSyncRepository = ScheduleSyncRepository(scheduleRepository, alarmScheduler)
