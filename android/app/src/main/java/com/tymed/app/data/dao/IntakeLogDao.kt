@@ -35,6 +35,14 @@ interface IntakeLogDao {
     @Query("SELECT * FROM intake_logs WHERE schedule_id = :scheduleId AND scheduled_date = :date")
     suspend fun findBySchedule(scheduleId: Long, date: String): IntakeLog?
 
+    // The unique (schedule_id, scheduled_date) index doesn't cover rows with no schedule (SQLite
+    // treats NULLs as distinct), so those are matched on medication + date + time instead.
+    @Query(
+        "SELECT * FROM intake_logs WHERE schedule_id IS NULL AND medication_id = :medicationId " +
+            "AND scheduled_date = :date AND scheduled_time = :time LIMIT 1",
+    )
+    suspend fun findUnscheduled(medicationId: Long, date: String, time: String): IntakeLog?
+
     @Query("UPDATE intake_logs SET status = :status, taken_at = :takenAt WHERE id = :id")
     suspend fun setStatus(id: Long, status: String, takenAt: String?)
 

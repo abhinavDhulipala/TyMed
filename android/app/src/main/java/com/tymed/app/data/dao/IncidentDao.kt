@@ -21,6 +21,9 @@ interface IncidentDao {
     @Query("SELECT * FROM incidents WHERE id = :id")
     suspend fun getById(id: Long): Incident?
 
+    @Query("SELECT * FROM incidents WHERE type = :type AND started_at = :startedAt AND ended_at = :endedAt LIMIT 1")
+    suspend fun findMatching(type: String, startedAt: String, endedAt: String): Incident?
+
     @Query("SELECT * FROM incidents ORDER BY started_at DESC")
     suspend fun getAll(): List<Incident>
 
