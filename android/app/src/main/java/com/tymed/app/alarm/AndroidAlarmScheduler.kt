@@ -30,6 +30,7 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
                 requestCode = params.scheduleId.toInt(),
                 scheduleId = params.scheduleId.toInt(),
                 medicationId = params.medicationId.toInt(),
+                profileId = params.profileId.toInt(),
                 medicationName = params.medicationName,
                 dosage = params.dosage,
                 isPrimary = true,
@@ -78,6 +79,7 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
                 requestCode = id.toInt(),
                 scheduleId = id.toInt(),
                 medicationId = schedule.schedule.medicationId.toInt(),
+                profileId = schedule.profileId.toInt(),
                 medicationName = schedule.medicationName,
                 dosage = schedule.dosage,
                 isPrimary = true,
@@ -100,6 +102,7 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
                 DoseReminderParams(
                     scheduleId = schedule.schedule.id,
                     medicationId = schedule.schedule.medicationId,
+                    profileId = schedule.profileId,
                     medicationName = schedule.medicationName,
                     dosage = schedule.dosage,
                     timeOfDay = schedule.schedule.timeOfDay,
@@ -112,10 +115,10 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
         }
     }
 
-    override fun setFollowUpMinutes(minutes: Int) {
+    override fun setFollowUpMinutes(profileId: Long, minutes: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putInt(PREF_FOLLOW_UP_MINUTES, minutes)
+            .putInt(prefKeyFollowUpMinutes(profileId.toInt()), minutes)
             .apply()
     }
 

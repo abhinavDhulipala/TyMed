@@ -11,10 +11,9 @@ data class ExportSettings(
     val aiAssistantEnabled: Boolean,
 )
 
-/** A full point-in-time copy of everything stored in the app — handed to
- * [com.tymed.app.export.ExportFormat] renderers so each format (JSON/CSV/PDF) works from the
- * same snapshot instead of re-querying the database per format. */
-data class ExportSnapshot(
+/** One profile's full point-in-time data. */
+data class ProfileExport(
+    val profileName: String,
     val medications: List<Medication>,
     val schedules: List<Schedule>,
     val intakeLogs: List<IntakeLog>,
@@ -22,22 +21,43 @@ data class ExportSnapshot(
     val settings: ExportSettings,
 )
 
+/** Handed to [com.tymed.app.export.ExportFormat] renderers so each format (JSON/CSV/PDF) works
+ * from the same snapshot instead of re-querying the database per format. Always a list of
+ * per-profile sections — exporting just the active profile is the one-element case, exporting
+ * every profile on the device is the many-element case, so renderers don't need to fork on scope. */
+data class ExportSnapshot(val profiles: List<ProfileExport>)
+
 class ExportRepository(
+    private val profileRepository: ProfileRepository,
     private val medicationRepository: MedicationRepository,
     private val scheduleRepository: ScheduleRepository,
     private val intakeLogRepository: IntakeLogRepository,
     private val incidentRepository: IncidentRepository,
     private val settingsRepository: SettingsRepository,
 ) {
-    suspend fun loadSnapshot(): ExportSnapshot = ExportSnapshot(
-        medications = medicationRepository.listMedications(),
-        schedules = scheduleRepository.listAllSchedules(),
-        intakeLogs = intakeLogRepository.listAllLogs(),
-        incidents = incidentRepository.listIncidents(),
-        settings = ExportSettings(
-            followUpMinutes = settingsRepository.getFollowUpMinutes(),
-            use24HourFormat = settingsRepository.getUse24HourFormat(),
-            aiAssistantEnabled = settingsRepository.getAiAssistantEnabled(),
-        ),
-    )
+    /** Snapshots just [profileId]. */
+    suspend fun loadSnapshot(profileId: Long): ExportSnapshot {
+        val profile = profileRepository.getProfile(profileId) ?: return ExportSnapshot(emptyList())
+        return ExportSnapshot(listOf(loadProfileExport(profile.id, profile.name)))
+    }
+
+    /** Snapshots every profile on the device, one section each. */
+    suspend fun loadSnapshotForAllProfiles(): ExportSnapshot {
+        val profiles = profileRepository.listProfiles()
+        return ExportSnapshot(profiles.map { loadProfileExport(it.id, it.name) })
+    }
+
+    private suspend fun loadProfileExport(profileId: Long, profileName: String): ProfileExport =
+        ProfileExport(
+            profileName = profileName,
+            medications = medicationRepository.listMedications(profileId),
+            schedules = scheduleRepository.listSchedulesForProfile(profileId),
+            intakeLogs = intakeLogRepository.listLogsForProfile(profileId),
+            incidents = incidentRepository.listIncidents(profileId),
+            settings = ExportSettings(
+                followUpMinutes = settingsRepository.getFollowUpMinutes(profileId),
+                use24HourFormat = settingsRepository.getUse24HourFormat(profileId),
+                aiAssistantEnabled = settingsRepository.getAiAssistantEnabled(profileId),
+            ),
+        )
 }

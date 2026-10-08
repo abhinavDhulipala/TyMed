@@ -5,6 +5,7 @@ import com.tymed.app.ai.AiOrchestrator
 import com.tymed.app.ai.GeminiNanoClient
 import com.tymed.app.ai.Tools
 import com.tymed.app.alarm.AndroidAlarmScheduler
+import com.tymed.app.data.ActiveProfile
 import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.TymedDatabase
 import com.tymed.app.data.repository.DoseActions
@@ -13,6 +14,7 @@ import com.tymed.app.data.repository.ImportRepository
 import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationRepository
+import com.tymed.app.data.repository.ProfileRepository
 import com.tymed.app.data.repository.ScheduleRepository
 import com.tymed.app.data.repository.ScheduleSyncRepository
 import com.tymed.app.data.repository.SettingsRepository
@@ -24,19 +26,24 @@ class AppContainer(context: Context) {
     val database: TymedDatabase = TymedDatabase.getInstance(context)
     val alarmScheduler: AlarmScheduler = AndroidAlarmScheduler(context)
 
+    /** Who's currently active in the UI — see [ActiveProfile] for how screens read/react to it. */
+    val activeProfile = ActiveProfile(context)
+
+    val profileRepository = ProfileRepository(database.profileDao())
     val medicationRepository = MedicationRepository(database.medicationDao())
     val scheduleRepository = ScheduleRepository(database.scheduleDao())
     val intakeLogRepository = IntakeLogRepository(database.intakeLogDao(), database.scheduleDao())
     val settingsRepository = SettingsRepository(database.appSettingDao())
     val incidentRepository = IncidentRepository(database.incidentDao())
     val exportRepository = ExportRepository(
+        profileRepository,
         medicationRepository,
         scheduleRepository,
         intakeLogRepository,
         incidentRepository,
         settingsRepository,
     )
-    val importRepository = ImportRepository(database, medicationRepository, scheduleRepository, alarmScheduler)
+    val importRepository = ImportRepository(database, profileRepository, medicationRepository, scheduleRepository, alarmScheduler)
 
     val doseActions = DoseActions(intakeLogRepository, medicationRepository, scheduleRepository, alarmScheduler)
     val scheduleSyncRepository = ScheduleSyncRepository(scheduleRepository, alarmScheduler)
@@ -45,6 +52,7 @@ class AppContainer(context: Context) {
     // away from and back to the Assistant tab, matching the old app-process-lifetime module.
     val geminiNanoClient = GeminiNanoClient()
     private val tools = Tools(
+        activeProfile,
         medicationRepository,
         scheduleRepository,
         intakeLogRepository,
@@ -53,5 +61,5 @@ class AppContainer(context: Context) {
         doseActions,
         incidentRepository,
     )
-    val aiOrchestrator = AiOrchestrator(medicationRepository, tools, geminiNanoClient)
+    val aiOrchestrator = AiOrchestrator(activeProfile, medicationRepository, tools, geminiNanoClient)
 }

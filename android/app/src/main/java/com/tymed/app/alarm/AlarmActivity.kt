@@ -42,6 +42,7 @@ class AlarmActivity : ComponentActivity() {
     private var requestCode = -1
     private var scheduleId = -1
     private var medicationId = -1
+    private var profileId = -1
 
     private val tickHandler = Handler(Looper.getMainLooper())
     private var ringingSinceMillis = 0L
@@ -79,13 +80,14 @@ class AlarmActivity : ComponentActivity() {
         requestCode = intent.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1)
         scheduleId = intent.getIntExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, -1)
         medicationId = intent.getIntExtra(AlarmReceiver.EXTRA_MEDICATION_ID, -1)
+        profileId = intent.getIntExtra(AlarmReceiver.EXTRA_PROFILE_ID, -1)
         val medicationName = intent.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
         ringingSinceMillis = intent.getLongExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, -1L)
             .takeIf { it > 0 } ?: System.currentTimeMillis()
 
         val configuredMinutes = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(PREF_FOLLOW_UP_MINUTES, DEFAULT_SNOOZE_OPTIONS_MINUTES.first())
+            .getInt(prefKeyFollowUpMinutes(profileId), DEFAULT_SNOOZE_OPTIONS_MINUTES.first())
         snoozeOptions = (listOf(configuredMinutes) + DEFAULT_SNOOZE_OPTIONS_MINUTES).distinct().sorted()
         selectedSnoozeMinutes = configuredMinutes
 
@@ -364,6 +366,7 @@ class AlarmActivity : ComponentActivity() {
                 requestCode = snoozeRequestCode,
                 scheduleId = scheduleId,
                 medicationId = medicationId,
+                profileId = profileId,
                 medicationName = medicationName,
                 dosage = dosage,
                 isPrimary = false,
@@ -395,7 +398,14 @@ class AlarmActivity : ComponentActivity() {
         }
     }
 
+    /** Switches the app's active profile to whichever profile owns this alarm before showing it
+     * again — otherwise a dose/medication belonging to a profile other than the one currently
+     * selected in the UI would look like it vanished. A no-op if profileId wasn't carried on the
+     * intent (e.g. an alarm armed before this field existed, surviving a reboot). */
     private fun openApp() {
+        if (profileId >= 0) {
+            (application as TymedApplication).container.activeProfile.switchTo(profileId.toLong())
+        }
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

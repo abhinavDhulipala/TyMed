@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
             putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, info.requestCode)
             putExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, info.scheduleId)
             putExtra(AlarmReceiver.EXTRA_MEDICATION_ID, info.medicationId)
+            putExtra(AlarmReceiver.EXTRA_PROFILE_ID, info.profileId)
             putExtra(AlarmReceiver.EXTRA_MEDICATION_NAME, info.medicationName)
             putExtra(AlarmReceiver.EXTRA_DOSAGE, info.dosage)
             putExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, info.ringingSinceMillis)

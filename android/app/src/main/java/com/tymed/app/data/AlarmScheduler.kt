@@ -5,6 +5,7 @@ import com.tymed.app.data.dao.ScheduleWithMedication
 data class DoseReminderParams(
     val scheduleId: Long,
     val medicationId: Long,
+    val profileId: Long,
     val medicationName: String,
     val dosage: String?,
     val timeOfDay: String, // "HH:MM"
@@ -44,5 +45,5 @@ interface AlarmScheduler {
     /** Mirrors the follow-up (snooze) interval into fast local storage the alarm can read
      * synchronously at ring time, without an async Room query on the activity's hot path. The
      * Room `app_settings` row (via SettingsRepository) stays the source of truth for display. */
-    fun setFollowUpMinutes(minutes: Int)
+    fun setFollowUpMinutes(profileId: Long, minutes: Int)
 }

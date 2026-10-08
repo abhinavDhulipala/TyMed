@@ -7,6 +7,7 @@ data class RingingAlarmInfo(
     val requestCode: Int,
     val scheduleId: Int,
     val medicationId: Int,
+    val profileId: Int,
     val medicationName: String,
     val dosage: String?,
     val ringingSinceMillis: Long,

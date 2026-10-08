@@ -46,7 +46,7 @@ class DatabaseMigrationTest {
 
         val db = TymedDatabase.getInstance(context)
         try {
-            runBlocking { db.appSettingDao().get("__probe__") }
+            runBlocking { db.appSettingDao().get(1L, "__probe__") }
         } finally {
             db.close()
         }
@@ -141,7 +141,7 @@ class DatabaseMigrationTest {
         // disk. All three migrations are required here (not just MIGRATION_4_5) since the legacy
         // file is still at version 4 and the database's declared version has since moved to 7.
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .build()
         try {
             runBlocking {
@@ -222,7 +222,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .build()
         try {
             runBlocking {
@@ -231,6 +231,7 @@ class DatabaseMigrationTest {
 
                 val incidentId = db.incidentDao().insert(
                     com.tymed.app.data.entity.Incident(
+                        profileId = 1,
                         type = "Seizure",
                         startedAt = "2026-09-20T08:00:00Z",
                         endedAt = "2026-09-20T08:01:30Z",
@@ -321,7 +322,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_6_7)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
             .build()
         try {
             runBlocking {
@@ -330,6 +331,101 @@ class DatabaseMigrationTest {
 
                 val untouched = db.incidentDao().getById(2)
                 assertEquals("2026-09-21T08:00:05Z", untouched?.endedAt)
+            }
+        } finally {
+            db.close()
+            dbFile.delete()
+        }
+    }
+
+    /** Proves [MIGRATION_7_8]'s multi-profile adoption: a single pre-existing install (no concept
+     * of profiles at all) ends up with exactly one seeded "Me" profile, and every pre-existing
+     * medication/incident/app_setting row is backfilled onto it. */
+    @Test
+    fun migrate7To8SeedsDefaultProfileAndBackfillsExistingRows() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val dbFile = testDbFile(context)
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { legacy ->
+            legacy.execSQL(
+                """
+                CREATE TABLE medications (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL, dosage TEXT, form TEXT, notes TEXT,
+                    pills_remaining INTEGER, refill_threshold INTEGER, created_at TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE schedules (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, time_of_day TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                    notification_ids TEXT, days_of_week TEXT, recurrence_type TEXT NOT NULL DEFAULT 'daily',
+                    start_date TEXT, end_date TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE intake_logs (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, schedule_id INTEGER, scheduled_date TEXT NOT NULL,
+                    scheduled_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', taken_at TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE,
+                    FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL("CREATE TABLE app_settings (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)")
+            legacy.execSQL(
+                """
+                CREATE TABLE incidents (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    type TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL,
+                    severity TEXT, notes TEXT, created_at TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL("CREATE INDEX idx_schedules_medication ON schedules(medication_id)")
+            legacy.execSQL("CREATE UNIQUE INDEX idx_logs_schedule_date ON intake_logs(schedule_id, scheduled_date)")
+            legacy.execSQL("CREATE INDEX idx_logs_date ON intake_logs(scheduled_date)")
+
+            legacy.execSQL(
+                "INSERT INTO medications (id, name, dosage, form, notes, pills_remaining, refill_threshold, created_at) " +
+                    "VALUES (1, 'Aspirin', '81mg', 'tablet', NULL, 30, 5, '2026-01-01T00:00:00.000Z')",
+            )
+            legacy.execSQL(
+                "INSERT INTO incidents (id, type, started_at, ended_at, severity, notes, created_at) " +
+                    "VALUES (1, 'Seizure', '2026-09-20T08:00:00Z', '2026-09-20T08:01:30Z', 'mild', NULL, '2026-09-20T08:01:30Z')",
+            )
+            legacy.execSQL("INSERT INTO app_settings (key, value) VALUES ('use_24_hour_format', '1')")
+
+            legacy.version = 7
+        }
+
+        val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(MIGRATION_7_8)
+            .build()
+        try {
+            runBlocking {
+                val profiles = db.profileDao().getAll()
+                assertEquals(1, profiles.size)
+                assertEquals("Me", profiles.first().name)
+                val defaultProfileId = profiles.first().id
+
+                val medication = db.medicationDao().getById(1)
+                assertEquals("Aspirin", medication?.name)
+                assertEquals(defaultProfileId, medication?.profileId)
+
+                val incident = db.incidentDao().getById(1)
+                assertEquals("Seizure", incident?.type)
+                assertEquals(defaultProfileId, incident?.profileId)
+
+                assertEquals("1", db.appSettingDao().get(defaultProfileId, "use_24_hour_format"))
             }
         } finally {
             db.close()

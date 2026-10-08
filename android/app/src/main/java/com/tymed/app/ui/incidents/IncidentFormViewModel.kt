@@ -41,6 +41,7 @@ data class IncidentFormUiState(
 
 class IncidentFormViewModel(
     private val container: AppContainer,
+    private val profileId: Long,
     private val incidentId: Long?,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(IncidentFormUiState(isEdit = incidentId != null))
@@ -93,7 +94,7 @@ class IncidentFormViewModel(
             if (incidentId != null) {
                 container.incidentRepository.updateIncident(incidentId, input)
             } else {
-                container.incidentRepository.createIncident(input)
+                container.incidentRepository.createIncident(profileId, input)
             }
             _uiState.update { it.copy(saved = true) }
         }

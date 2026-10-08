@@ -46,6 +46,7 @@ class AlarmRingService : Service() {
         val requestCode = intent?.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1) ?: -1
         val scheduleId = intent?.getIntExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, -1) ?: -1
         val medicationId = intent?.getIntExtra(AlarmReceiver.EXTRA_MEDICATION_ID, -1) ?: -1
+        val profileId = intent?.getIntExtra(AlarmReceiver.EXTRA_PROFILE_ID, -1) ?: -1
         val medicationName = intent?.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent?.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
         val ringingSinceMillis = intent?.getLongExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, -1L)
@@ -57,6 +58,7 @@ class AlarmRingService : Service() {
             requestCode,
             scheduleId,
             medicationId,
+            profileId,
             medicationName,
             dosage,
             ringingSinceMillis,
@@ -78,6 +80,7 @@ class AlarmRingService : Service() {
                 requestCode,
                 scheduleId,
                 medicationId,
+                profileId,
                 medicationName,
                 dosage,
                 ringingSinceMillis,

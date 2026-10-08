@@ -112,6 +112,7 @@ class AlarmActivitySnoozeTest {
                 requestCode = snoozeRequestCode,
                 scheduleId = scheduleId,
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 isPrimary = false,

@@ -32,7 +32,7 @@ class FakeAlarmScheduler : AlarmScheduler {
         rearmed += schedules
     }
 
-    override fun setFollowUpMinutes(minutes: Int) {
+    override fun setFollowUpMinutes(profileId: Long, minutes: Int) {
         followUpMinutes += minutes
     }
 }

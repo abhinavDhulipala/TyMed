@@ -1,5 +1,7 @@
 package com.tymed.app.ai
 
+import androidx.test.core.app.ApplicationProvider
+import com.tymed.app.data.ActiveProfile
 import com.tymed.app.data.FakeAlarmScheduler
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.entity.durationSeconds
@@ -10,6 +12,7 @@ import com.tymed.app.data.repository.MedicationInput
 import com.tymed.app.data.repository.MedicationRepository
 import com.tymed.app.data.repository.ScheduleRepository
 import com.tymed.app.data.repository.ScheduleSyncRepository
+import com.tymed.app.data.repository.TEST_PROFILE_ID
 import com.tymed.app.data.repository.newInMemoryDatabase
 import com.tymed.app.util.todayDateString
 import kotlinx.coroutines.test.runTest
@@ -38,7 +41,8 @@ class ToolsTest {
         alarmScheduler = FakeAlarmScheduler()
         val doseActions = DoseActions(logs, medications, schedules, alarmScheduler)
         val sync = ScheduleSyncRepository(schedules, alarmScheduler)
-        tools = Tools(medications, schedules, logs, sync, alarmScheduler, doseActions, incidents)
+        val activeProfile = ActiveProfile(ApplicationProvider.getApplicationContext()).apply { switchTo(TEST_PROFILE_ID) }
+        tools = Tools(activeProfile, medications, schedules, logs, sync, alarmScheduler, doseActions, incidents)
     }
 
     @Test
@@ -46,14 +50,14 @@ class ToolsTest {
         val result = tools.addMedication("Vitamin D", "1000 IU", listOf("08:00"), null, confirmed = false)
 
         assertTrue(result is AddMedicationResult.NeedsConfirmation)
-        assertTrue(medications.listMedications().isEmpty())
+        assertTrue(medications.listMedications(TEST_PROFILE_ID).isEmpty())
     }
 
     @Test
     fun `add_medication writes once confirmed`() = runTest {
         tools.addMedication("Vitamin D", "1000 IU", listOf("08:00"), null, confirmed = true)
 
-        val saved = medications.listMedications().single()
+        val saved = medications.listMedications(TEST_PROFILE_ID).single()
         assertEquals("Vitamin D", saved.name)
         assertEquals(1, alarmScheduler.scheduled.size)
     }
@@ -85,8 +89,8 @@ class ToolsTest {
 
     @Test
     fun `update_medication_schedule disambiguates by dosage`() = runTest {
-        medications.createMedication(MedicationInput("Aspirin", "81mg", null, null, null, null))
-        medications.createMedication(MedicationInput("Aspirin", "325mg", null, null, null, null))
+        medications.createMedication(TEST_PROFILE_ID, MedicationInput("Aspirin", "81mg", null, null, null, null))
+        medications.createMedication(TEST_PROFILE_ID, MedicationInput("Aspirin", "325mg", null, null, null, null))
 
         val ambiguous = tools.updateMedicationSchedule("Aspirin", null, listOf("08:00"), null, confirmed = false)
         assertTrue(ambiguous is UpdateScheduleResult.Ambiguous)
@@ -111,11 +115,11 @@ class ToolsTest {
 
         val pending = tools.markDoseTaken("Aspirin", null, confirmed = false)
         assertTrue(pending is MarkDoseTakenResult.NeedsConfirmation)
-        assertEquals(DoseStatus.PENDING, logs.getDosesForDate(todayDateString()).first().log.status)
+        assertEquals(DoseStatus.PENDING, logs.getDosesForDate(TEST_PROFILE_ID, todayDateString()).first().log.status)
 
         val done = tools.markDoseTaken("Aspirin", null, confirmed = true)
         assertTrue(done is MarkDoseTakenResult.MarkedTaken)
-        assertEquals(DoseStatus.TAKEN, logs.getDosesForDate(todayDateString()).first().log.status)
+        assertEquals(DoseStatus.TAKEN, logs.getDosesForDate(TEST_PROFILE_ID, todayDateString()).first().log.status)
     }
 
     @Test
@@ -129,7 +133,7 @@ class ToolsTest {
         val result = tools.logIncident("Seizure", null, 45, null, null, confirmed = false)
 
         assertTrue(result is LogIncidentResult.NeedsConfirmation)
-        assertTrue(incidents.listIncidents().isEmpty())
+        assertTrue(incidents.listIncidents(TEST_PROFILE_ID).isEmpty())
     }
 
     @Test
@@ -137,7 +141,7 @@ class ToolsTest {
         val result = tools.logIncident("Seizure", null, 45, "mild", "In the yard", confirmed = true)
 
         assertTrue(result is LogIncidentResult.Logged)
-        val saved = incidents.listIncidents().single()
+        val saved = incidents.listIncidents(TEST_PROFILE_ID).single()
         assertEquals("Seizure", saved.type)
         assertEquals("mild", saved.severity)
         assertEquals("In the yard", saved.notes)
@@ -148,7 +152,7 @@ class ToolsTest {
     fun `log_incident with no durationSeconds logs it as an instant event`() = runTest {
         tools.logIncident("Seizure", null, null, null, null, confirmed = true)
 
-        val saved = incidents.listIncidents().single()
+        val saved = incidents.listIncidents(TEST_PROFILE_ID).single()
         assertEquals(0L, saved.durationSeconds())
     }
 

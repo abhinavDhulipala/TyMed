@@ -12,13 +12,9 @@ class IncidentsListViewModel(private val container: AppContainer) : ViewModel() 
     private val _incidents = MutableStateFlow<List<Incident>>(emptyList())
     val incidents: StateFlow<List<Incident>> = _incidents
 
-    fun refresh() {
+    fun refresh(profileId: Long) {
         viewModelScope.launch {
-            _incidents.value = container.incidentRepository.listIncidents()
+            _incidents.value = container.incidentRepository.listIncidents(profileId)
         }
-    }
-
-    init {
-        refresh()
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -23,7 +24,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -45,7 +49,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val container = rememberAppContainer()
-    val viewModel: SettingsViewModel = viewModel(factory = TymedViewModelFactory(container) { SettingsViewModel(it) })
+    val profileId = container.activeProfile.current
+    val viewModel: SettingsViewModel = viewModel(
+        key = "settings-$profileId",
+        factory = TymedViewModelFactory(container) { SettingsViewModel(it, profileId) },
+    )
     val uiState by viewModel.uiState.collectAsState()
     val aiSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     val context = LocalContext.current
@@ -56,6 +64,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.loadImportFile(context.contentResolver, uri)
     }
+    var exportScope by remember { mutableStateOf(ExportScope.ACTIVE_PROFILE) }
 
     Column(
         modifier = modifier
@@ -114,11 +123,23 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 fontSize = 12.sp,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm)) {
+                FilterChip(
+                    selected = exportScope == ExportScope.ACTIVE_PROFILE,
+                    onClick = { exportScope = ExportScope.ACTIVE_PROFILE },
+                    label = { Text("This profile") },
+                )
+                FilterChip(
+                    selected = exportScope == ExportScope.ALL_PROFILES,
+                    onClick = { exportScope = ExportScope.ALL_PROFILES },
+                    label = { Text("All profiles") },
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(TymedSpacing.sm)) {
                 ExportFormat.entries.forEach { format ->
                     Button(
                         onClick = {
                             coroutineScope.launch {
-                                val file = viewModel.exportData(format, context.cacheDir)
+                                val file = viewModel.exportData(format, exportScope, context.cacheDir)
                                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = format.mimeType
@@ -190,12 +211,17 @@ private fun ImportDialogs(dialog: ImportDialog?, onConfirm: () -> Unit, onDismis
 
 private fun describeImport(data: ImportData): String {
     val contents = listOf(
-        count(data.medications.size, "medication"),
-        count(data.schedules.size, "schedule"),
-        count(data.intakeLogs.size, "dose record"),
-        count(data.incidents.size, "incident"),
+        count(data.profiles.sumOf { it.medications.size }, "medication"),
+        count(data.profiles.sumOf { it.schedules.size }, "schedule"),
+        count(data.profiles.sumOf { it.intakeLogs.size }, "dose record"),
+        count(data.profiles.sumOf { it.incidents.size }, "incident"),
     )
-    return "This file has ${contents.joinToString(", ")}. They'll be added alongside your current data — " +
+    val profileNote = if (data.profiles.size > 1) {
+        " across ${count(data.profiles.size, "profile")}"
+    } else {
+        ""
+    }
+    return "This file has ${contents.joinToString(", ")}$profileNote. They'll be added alongside your current data — " +
         "anything already on this device is skipped, and nothing is deleted."
 }
 

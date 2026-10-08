@@ -7,6 +7,7 @@ import com.tymed.app.data.entity.Medication
 import com.tymed.app.data.entity.RecurrenceType
 import com.tymed.app.data.entity.Schedule
 import com.tymed.app.data.repository.ImportData
+import com.tymed.app.data.repository.ImportProfileData
 import com.tymed.app.data.repository.encodeDaysOfWeek
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -25,6 +26,10 @@ class ImportException(message: String) : Exception(message)
 // Far beyond any real export (years of doses are a few MB of JSON), but bounded so a zip bomb
 // or a wrongly-picked huge file fails cleanly instead of running the app out of memory.
 private const val MAX_IMPORT_BYTES = 64L * 1024 * 1024
+
+// Used for a CSV export with no "profile" column (e.g. one hand-built in a test, or a very old
+// single-profile export) — grouped as a single section under this name.
+private const val DEFAULT_IMPORT_PROFILE_NAME = "Imported"
 
 private val TIME_OF_DAY = Regex("""([01]\d|2[0-3]):[0-5]\d""")
 private val RECURRENCE_TYPES = setOf(RecurrenceType.DAILY, RecurrenceType.WEEKLY, RecurrenceType.MONTHLY)
@@ -46,24 +51,38 @@ object ImportParser {
         else -> parseJson(bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF"))
     }
 
+    /** The exporters write one JSON object per profile under a top-level "profiles" array (see
+     * [com.tymed.app.export.JsonExporter]) \u2014 a single-profile export is just the one-element
+     * case. */
     private fun parseJson(text: String): ImportData {
         val root = try {
             JSONObject(text)
         } catch (error: JSONException) {
             throw notAnExport()
         }
-        if (!root.has("medications")) throw notAnExport()
-        fun records(key: String): List<ImportRecord> {
-            if (root.isNull(key)) return emptyList()
-            val array = root.optJSONArray(key) ?: throw ImportException("\"$key\" should be a list.")
-            return (0 until array.length()).map { index ->
-                val obj = array.optJSONObject(index) ?: throw ImportException("$key entry ${index + 1} isn't an object.")
-                ImportRecord("$key entry ${index + 1}") { field -> if (obj.isNull(field)) null else obj.get(field) }
+        val profilesArray = root.optJSONArray("profiles") ?: throw notAnExport()
+        val profiles = (0 until profilesArray.length()).map { profileIndex ->
+            val profileObj = profilesArray.optJSONObject(profileIndex)
+                ?: throw ImportException("profiles entry ${profileIndex + 1} isn't an object.")
+            val profileName = profileObj.optString("profileName").takeIf { it.isNotBlank() } ?: DEFAULT_IMPORT_PROFILE_NAME
+
+            fun records(key: String): List<ImportRecord> {
+                if (profileObj.isNull(key)) return emptyList()
+                val array = profileObj.optJSONArray(key) ?: throw ImportException("\"$key\" should be a list.")
+                return (0 until array.length()).map { index ->
+                    val obj = array.optJSONObject(index) ?: throw ImportException("$key entry ${index + 1} isn't an object.")
+                    ImportRecord("$key entry ${index + 1}") { field -> if (obj.isNull(field)) null else obj.get(field) }
+                }
             }
+            build(profileName, records("medications"), records("schedules"), records("intakeLogs"), records("incidents"))
         }
-        return build(records("medications"), records("schedules"), records("intakeLogs"), records("incidents"))
+        return ImportData(profiles)
     }
 
+    /** The exporters give every row a "profile" column (see [com.tymed.app.export.CsvExporter]),
+     * so rows are grouped into profile sections by that column rather than by file. A CSV with no
+     * such column (e.g. a minimal hand-built fixture) falls back to one [DEFAULT_IMPORT_PROFILE_NAME]
+     * section. */
     private fun parseCsvZip(bytes: ByteArray): ImportData {
         val files = mutableMapOf<String, String>()
         var totalBytes = 0L
@@ -79,25 +98,46 @@ object ImportParser {
             }
         }
         if ("medications.csv" !in files) throw notAnExport()
-        fun records(fileName: String): List<ImportRecord> {
-            val rows = parseCsv(files[fileName] ?: return emptyList())
-            val header = rows.firstOrNull() ?: return emptyList()
+        fun recordsByProfile(fileName: String): Map<String, List<ImportRecord>> {
+            val rows = parseCsv(files[fileName] ?: return emptyMap())
+            val header = rows.firstOrNull() ?: return emptyMap()
             return rows.drop(1).mapIndexed { index, row ->
-                // Row numbers as a spreadsheet shows them: the header is row 1.
-                ImportRecord("$fileName row ${index + 2}") { field ->
+                val get: (String) -> String? = { field ->
                     header.indexOf(field).takeIf { it >= 0 }?.let { row.getOrNull(it) }?.takeIf { it.isNotEmpty() }
                 }
-            }
+                val profileName = get("profile") ?: DEFAULT_IMPORT_PROFILE_NAME
+                // Row numbers as a spreadsheet shows them: the header is row 1.
+                profileName to ImportRecord("$fileName row ${index + 2}", get)
+            }.groupBy({ it.first }, { it.second })
         }
-        return build(records("medications.csv"), records("schedules.csv"), records("intake_logs.csv"), records("incidents.csv"))
+
+        val medications = recordsByProfile("medications.csv")
+        val schedules = recordsByProfile("schedules.csv")
+        val intakeLogs = recordsByProfile("intake_logs.csv")
+        val incidents = recordsByProfile("incidents.csv")
+        val profileNames = (medications.keys + schedules.keys + intakeLogs.keys + incidents.keys).distinct()
+
+        return ImportData(
+            profileNames.map { name ->
+                build(
+                    name,
+                    medications[name] ?: emptyList(),
+                    schedules[name] ?: emptyList(),
+                    intakeLogs[name] ?: emptyList(),
+                    incidents[name] ?: emptyList(),
+                )
+            },
+        )
     }
 
     private fun build(
+        profileName: String,
         medications: List<ImportRecord>,
         schedules: List<ImportRecord>,
         intakeLogs: List<ImportRecord>,
         incidents: List<ImportRecord>,
-    ) = ImportData(
+    ) = ImportProfileData(
+        profileName = profileName,
         medications = medications.map { it.toMedication() },
         schedules = schedules.map { it.toSchedule() },
         intakeLogs = intakeLogs.map { it.toIntakeLog() },
@@ -106,6 +146,8 @@ object ImportParser {
 
     private fun ImportRecord.toMedication() = Medication(
         id = requireLong("id"),
+        // Overwritten by ImportRepository with the resolved target profile — unknown at parse time.
+        profileId = 0,
         name = requireString("name").trim().ifEmpty { fail("\"name\" is empty") },
         dosage = string("dosage"),
         form = string("form"),
@@ -153,6 +195,8 @@ object ImportParser {
         val endedAt = instant("endedAt") ?: fail("\"endedAt\" is missing")
         return Incident(
             id = long("id") ?: 0,
+            // Overwritten by ImportRepository with the resolved target profile — unknown at parse time.
+            profileId = 0,
             type = requireString("type").trim().ifEmpty { fail("\"type\" is empty") },
             startedAt = startedAt,
             endedAt = endedAt,

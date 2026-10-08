@@ -19,9 +19,10 @@ import com.tymed.app.ui.theme.TymedSpacing
 @Composable
 fun DayScreen(dateStr: String, onDoseClick: (Long) -> Unit, modifier: Modifier = Modifier) {
     val container = rememberAppContainer()
+    val profileId = container.activeProfile.current
     val viewModel: DayDosesViewModel = viewModel(
-        key = "day-$dateStr",
-        factory = TymedViewModelFactory(container) { DayDosesViewModel(it, dateStr) },
+        key = "day-$dateStr-$profileId",
+        factory = TymedViewModelFactory(container) { DayDosesViewModel(it, profileId, dateStr) },
     )
     val doses by viewModel.doses.collectAsState()
 
