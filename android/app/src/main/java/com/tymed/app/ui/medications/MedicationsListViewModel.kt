@@ -12,13 +12,9 @@ class MedicationsListViewModel(private val container: AppContainer) : ViewModel(
     private val _medications = MutableStateFlow<List<Medication>>(emptyList())
     val medications: StateFlow<List<Medication>> = _medications
 
-    fun refresh() {
+    fun refresh(profileId: Long) {
         viewModelScope.launch {
-            _medications.value = container.medicationRepository.listMedications()
+            _medications.value = container.medicationRepository.listMedications(profileId)
         }
-    }
-
-    init {
-        refresh()
     }
 }

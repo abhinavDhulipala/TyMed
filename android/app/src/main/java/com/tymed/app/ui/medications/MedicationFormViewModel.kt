@@ -42,6 +42,7 @@ data class MedicationFormUiState(
 
 class MedicationFormViewModel(
     private val container: AppContainer,
+    private val profileId: Long,
     private val medicationId: Long?,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(MedicationFormUiState(isEdit = medicationId != null))
@@ -93,6 +94,7 @@ class MedicationFormViewModel(
         viewModelScope.launch {
             if (!force) {
                 val duplicate = container.medicationRepository.findDuplicateMedication(
+                    profileId = profileId,
                     name = values.name,
                     dosage = values.dosage.ifBlank { null },
                     form = values.form.ifBlank { null },
@@ -124,11 +126,12 @@ class MedicationFormViewModel(
             container.medicationRepository.updateMedication(medicationId, input)
             medicationId
         } else {
-            container.medicationRepository.createMedication(input)
+            container.medicationRepository.createMedication(profileId, input)
         }
 
         container.scheduleSyncRepository.syncMedicationSchedules(
             medicationId = id,
+            profileId = profileId,
             medicationName = input.name,
             medicationDosage = input.dosage,
             times = values.times,

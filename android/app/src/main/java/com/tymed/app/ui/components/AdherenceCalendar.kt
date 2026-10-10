@@ -44,6 +44,7 @@ import java.time.LocalDate
 @Composable
 fun AdherenceCalendar(
     intakeLogRepository: IntakeLogRepository,
+    profileId: Long,
     onDayClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -52,8 +53,8 @@ fun AdherenceCalendar(
     var month by remember { mutableIntStateOf(today.monthValue) }
 
     val grid = remember(year, month) { buildMonthGrid(year, month) }
-    val adherence by produceState<Map<String, DailyAdherence>>(initialValue = emptyMap(), year, month) {
-        value = intakeLogRepository.getDailyAdherence(grid.first().dateStr, grid.last().dateStr)
+    val adherence by produceState<Map<String, DailyAdherence>>(initialValue = emptyMap(), year, month, profileId) {
+        value = intakeLogRepository.getDailyAdherence(profileId, grid.first().dateStr, grid.last().dateStr)
     }
 
     val monthTaken = grid.filter { it.inCurrentMonth }.sumOf { adherence[it.dateStr]?.taken ?: 0 }

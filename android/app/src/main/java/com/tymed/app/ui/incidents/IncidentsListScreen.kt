@@ -13,6 +13,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -34,9 +35,11 @@ fun IncidentsListScreen(
     val container = rememberAppContainer()
     val viewModel: IncidentsListViewModel = viewModel(factory = TymedViewModelFactory(container) { IncidentsListViewModel(it) })
     val incidents by viewModel.incidents.collectAsState()
+    val profileId = container.activeProfile.current
 
-    LifecycleResumeEffect(Unit) {
-        viewModel.refresh()
+    LaunchedEffect(profileId) { viewModel.refresh(profileId) }
+    LifecycleResumeEffect(profileId) {
+        viewModel.refresh(profileId)
         onPauseOrDispose { }
     }
 

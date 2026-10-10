@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -35,9 +36,11 @@ fun MedicationsListScreen(
     val container = rememberAppContainer()
     val viewModel: MedicationsListViewModel = viewModel(factory = TymedViewModelFactory(container) { MedicationsListViewModel(it) })
     val medications by viewModel.medications.collectAsState()
+    val profileId = container.activeProfile.current
 
-    LifecycleResumeEffect(Unit) {
-        viewModel.refresh()
+    LaunchedEffect(profileId) { viewModel.refresh(profileId) }
+    LifecycleResumeEffect(profileId) {
+        viewModel.refresh(profileId)
         onPauseOrDispose { }
     }
 

@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 
 /** Backs both the Today screen and the generic day-detail screen — "today" is just this called
  * with today's date; a day is a day, today isn't special. */
-class DayDosesViewModel(private val container: AppContainer, private val dateStr: String) : ViewModel() {
+class DayDosesViewModel(private val container: AppContainer, private val profileId: Long, private val dateStr: String) : ViewModel() {
     private val _doses = MutableStateFlow<List<DoseWithMedication>>(emptyList())
     val doses: StateFlow<List<DoseWithMedication>> = _doses
 
@@ -23,7 +23,7 @@ class DayDosesViewModel(private val container: AppContainer, private val dateStr
 
     fun refresh() {
         viewModelScope.launch {
-            _doses.value = container.intakeLogRepository.getDosesForDate(dateStr)
+            _doses.value = container.intakeLogRepository.getDosesForDate(profileId, dateStr)
             _loading.value = false
         }
     }

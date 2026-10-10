@@ -37,6 +37,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 requestCode = scheduleId.toInt() + SNOOZE_REQUEST_CODE_OFFSET,
                 scheduleId = scheduleId.toInt(),
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 isPrimary = false,
@@ -62,6 +63,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 timeOfDay = "08:00",
                 recurrenceType = RecurrenceType.DAILY,
             ),
+            profileId = 1,
             medicationName = "Aspirin",
             dosage = "81mg",
         )
@@ -92,6 +94,7 @@ class AndroidAlarmSchedulerSnoozeTest {
             DoseReminderParams(
                 scheduleId = scheduleId,
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 timeOfDay = "08:00",
@@ -131,6 +134,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 requestCode = snoozeRequestCode,
                 scheduleId = scheduleId.toInt(),
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 isPrimary = false,
@@ -155,6 +159,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 timeOfDay = "08:00",
                 recurrenceType = RecurrenceType.DAILY,
             ),
+            profileId = 1,
             medicationName = "Aspirin",
             dosage = "81mg",
         )
@@ -177,6 +182,7 @@ class AndroidAlarmSchedulerSnoozeTest {
             DoseReminderParams(
                 scheduleId = scheduleId,
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 timeOfDay = "08:00",
@@ -210,6 +216,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 timeOfDay = "08:00",
                 recurrenceType = RecurrenceType.DAILY,
             ),
+            profileId = 1,
             medicationName = "Aspirin",
             dosage = "81mg",
         )
@@ -233,6 +240,7 @@ class AndroidAlarmSchedulerSnoozeTest {
             DoseReminderParams(
                 scheduleId = scheduleId,
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 timeOfDay = "08:00",
@@ -270,6 +278,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 timeOfDay = "08:00",
                 recurrenceType = RecurrenceType.DAILY,
             ),
+            profileId = 1,
             medicationName = "Aspirin",
             dosage = "81mg",
         )
@@ -315,6 +324,7 @@ class AndroidAlarmSchedulerSnoozeTest {
             DoseReminderParams(
                 scheduleId = scheduleA,
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 timeOfDay = "08:00",
@@ -328,6 +338,7 @@ class AndroidAlarmSchedulerSnoozeTest {
             DoseReminderParams(
                 scheduleId = scheduleB,
                 medicationId = 2,
+                profileId = 1,
                 medicationName = "Ibuprofen",
                 dosage = "200mg",
                 timeOfDay = "20:00",
@@ -367,6 +378,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 timeOfDay = "08:00",
                 recurrenceType = RecurrenceType.DAILY,
             ),
+            profileId = 1,
             medicationName = "Aspirin",
             dosage = "81mg",
         )
@@ -403,6 +415,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 requestCode = newSnoozeRequestCode,
                 scheduleId = scheduleId.toInt(),
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 isPrimary = false,

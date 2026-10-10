@@ -13,16 +13,20 @@ data class IncidentInput(
 )
 
 class IncidentRepository(private val dao: IncidentDao) {
-    suspend fun listIncidents(): List<Incident> = dao.getAll()
+    suspend fun listIncidents(profileId: Long): List<Incident> = dao.getAllForProfile(profileId)
+
+    /** Every incident across every profile, for a full "all profiles" data export. */
+    suspend fun listAllIncidents(): List<Incident> = dao.getAll()
 
     suspend fun getIncident(id: Long): Incident? = dao.getById(id)
 
-    suspend fun recentIncidents(type: String? = null, limit: Int = 20): List<Incident> =
-        if (type != null) dao.getByType(type, limit) else dao.getRecent(limit)
+    suspend fun recentIncidents(profileId: Long, type: String? = null, limit: Int = 20): List<Incident> =
+        if (type != null) dao.getByType(profileId, type, limit) else dao.getRecent(profileId, limit)
 
-    suspend fun createIncident(input: IncidentInput): Long =
+    suspend fun createIncident(profileId: Long, input: IncidentInput): Long =
         dao.insert(
             Incident(
+                profileId = profileId,
                 type = input.type,
                 startedAt = input.startedAt,
                 endedAt = input.endedAt,

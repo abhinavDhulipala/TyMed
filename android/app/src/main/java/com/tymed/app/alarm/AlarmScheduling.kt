@@ -12,13 +12,18 @@ import android.content.Intent
 const val SNOOZE_REQUEST_CODE_OFFSET = 500_000
 
 const val PREFS_NAME = "tymed_alarm_prefs"
-const val PREF_FOLLOW_UP_MINUTES = "follow_up_minutes"
+private const val PREF_FOLLOW_UP_MINUTES_PREFIX = "follow_up_minutes_"
+
+/** Per-profile key into [PREFS_NAME] — each profile's alarms snooze by their own configured
+ * follow-up interval, not whichever profile happens to be active in the UI. */
+fun prefKeyFollowUpMinutes(profileId: Int): String = "$PREF_FOLLOW_UP_MINUTES_PREFIX$profileId"
 
 data class AlarmSchedule(
     val triggerAtMillis: Long,
     val requestCode: Int,
     val scheduleId: Int,
     val medicationId: Int,
+    val profileId: Int,
     val medicationName: String,
     val dosage: String?,
     /** True for the daily dose alarm (self-reschedules +24h); false for a snooze follow-up. */
@@ -46,6 +51,7 @@ fun armAlarm(context: Context, schedule: AlarmSchedule) {
         putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, schedule.requestCode)
         putExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, schedule.scheduleId)
         putExtra(AlarmReceiver.EXTRA_MEDICATION_ID, schedule.medicationId)
+        putExtra(AlarmReceiver.EXTRA_PROFILE_ID, schedule.profileId)
         putExtra(AlarmReceiver.EXTRA_MEDICATION_NAME, schedule.medicationName)
         putExtra(AlarmReceiver.EXTRA_DOSAGE, schedule.dosage)
         putExtra(AlarmReceiver.EXTRA_IS_PRIMARY, schedule.isPrimary)

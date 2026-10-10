@@ -36,14 +36,15 @@ fun TodayScreen(
 ) {
     val container = rememberAppContainer()
     val today = remember { todayDateString() }
+    val profileId = container.activeProfile.current
     val viewModel: DayDosesViewModel = viewModel(
-        key = "today",
-        factory = TymedViewModelFactory(container) { DayDosesViewModel(it, today) },
+        key = "today-$profileId",
+        factory = TymedViewModelFactory(container) { DayDosesViewModel(it, profileId, today) },
     )
     val doses by viewModel.doses.collectAsState()
     val loading by viewModel.loading.collectAsState()
 
-    LifecycleResumeEffect(Unit) {
+    LifecycleResumeEffect(profileId) {
         viewModel.refresh()
         onPauseOrDispose { }
     }
@@ -54,7 +55,7 @@ fun TodayScreen(
         verticalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
     ) {
         item {
-            AdherenceCalendar(intakeLogRepository = container.intakeLogRepository, onDayClick = onDayClick)
+            AdherenceCalendar(intakeLogRepository = container.intakeLogRepository, profileId = profileId, onDayClick = onDayClick)
         }
 
         if (!loading && doses.isEmpty()) {

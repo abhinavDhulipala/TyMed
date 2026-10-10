@@ -22,9 +22,9 @@ class MedicationRepositoryTest {
 
     @Test
     fun `findDuplicateMedication flags an exact name+dosage+form match`() = runTest {
-        repository.createMedication(input("Aspirin", "81mg", "tablet"))
+        repository.createMedication(TEST_PROFILE_ID, input("Aspirin", "81mg", "tablet"))
 
-        val duplicate = repository.findDuplicateMedication("aspirin", "81mg", "tablet")
+        val duplicate = repository.findDuplicateMedication(TEST_PROFILE_ID, "aspirin", "81mg", "tablet")
 
         assertEquals("Aspirin", duplicate.exact?.name)
         assertEquals(emptyList<Any>(), duplicate.partial)
@@ -32,9 +32,9 @@ class MedicationRepositoryTest {
 
     @Test
     fun `findDuplicateMedication treats a different dosage as only a partial match`() = runTest {
-        repository.createMedication(input("Aspirin", "81mg", "tablet"))
+        repository.createMedication(TEST_PROFILE_ID, input("Aspirin", "81mg", "tablet"))
 
-        val duplicate = repository.findDuplicateMedication("aspirin", "325mg", "tablet")
+        val duplicate = repository.findDuplicateMedication(TEST_PROFILE_ID, "aspirin", "325mg", "tablet")
 
         assertNull(duplicate.exact)
         assertEquals(1, duplicate.partial.size)
@@ -43,9 +43,9 @@ class MedicationRepositoryTest {
 
     @Test
     fun `findDuplicateMedication excludes the medication being edited`() = runTest {
-        val id = repository.createMedication(input("Aspirin", "81mg", "tablet"))
+        val id = repository.createMedication(TEST_PROFILE_ID, input("Aspirin", "81mg", "tablet"))
 
-        val duplicate = repository.findDuplicateMedication("Aspirin", "81mg", "tablet", excludeId = id)
+        val duplicate = repository.findDuplicateMedication(TEST_PROFILE_ID, "Aspirin", "81mg", "tablet", excludeId = id)
 
         assertNull(duplicate.exact)
         assertEquals(0, duplicate.partial.size)
@@ -53,18 +53,18 @@ class MedicationRepositoryTest {
 
     @Test
     fun `pill count decrement never goes below zero or past null`() = runTest {
-        val untracked = repository.createMedication(input("Vitamin D"))
+        val untracked = repository.createMedication(TEST_PROFILE_ID, input("Vitamin D"))
         repository.decrementPillCount(untracked)
         assertNull(repository.getMedication(untracked)?.pillsRemaining)
 
-        val id = repository.createMedication(input("Aspirin").copy(pillsRemaining = 0))
+        val id = repository.createMedication(TEST_PROFILE_ID, input("Aspirin").copy(pillsRemaining = 0))
         repository.decrementPillCount(id)
         assertEquals(0, repository.getMedication(id)?.pillsRemaining)
     }
 
     @Test
     fun `pill count increment and decrement are symmetric`() = runTest {
-        val id = repository.createMedication(input("Aspirin").copy(pillsRemaining = 10))
+        val id = repository.createMedication(TEST_PROFILE_ID, input("Aspirin").copy(pillsRemaining = 10))
         repository.decrementPillCount(id)
         repository.incrementPillCount(id)
         assertEquals(10, repository.getMedication(id)?.pillsRemaining)

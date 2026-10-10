@@ -10,13 +10,18 @@ import com.tymed.app.data.dao.AppSettingDao
 import com.tymed.app.data.dao.IncidentDao
 import com.tymed.app.data.dao.IntakeLogDao
 import com.tymed.app.data.dao.MedicationDao
+import com.tymed.app.data.dao.ProfileDao
 import com.tymed.app.data.dao.ScheduleDao
 import com.tymed.app.data.entity.AppSettingEntity
+import com.tymed.app.data.entity.DEFAULT_PROFILE_ID
 import com.tymed.app.data.entity.Incident
 import com.tymed.app.data.entity.IntakeLog
 import com.tymed.app.data.entity.Medication
+import com.tymed.app.data.entity.Profile
+import com.tymed.app.data.entity.ProfileColors
 import com.tymed.app.data.entity.Schedule
 import java.io.File
+import java.time.Instant
 
 /**
  * Existing installs (from the old Expo/expo-sqlite build this app replaces) already have a
@@ -147,9 +152,80 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/** Introduces multi-profile support: a new `profiles` table, plus `profile_id` on `medications`
+ * and `incidents` (owned transitively by `schedules`/`intake_logs` through `medication_id`, so
+ * those two tables don't need their own column) and on `app_settings` (whose primary key becomes
+ * the composite `(profile_id, key)`, since every app setting is now per-profile). Every
+ * pre-existing row is backfilled onto one seeded "Me" profile — `profiles` is empty before this
+ * migration runs, so inserting it first gives it id 1, matching [DEFAULT_PROFILE_ID]. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE profiles (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, color_hex TEXT NOT NULL, created_at TEXT NOT NULL)")
+        db.execSQL(
+            "INSERT INTO profiles (id, name, color_hex, created_at) VALUES (?, ?, ?, ?)",
+            arrayOf<Any>(DEFAULT_PROFILE_ID, "Me", ProfileColors.forIndex(0), Instant.now().toString()),
+        )
+
+        db.execSQL(
+            "CREATE TABLE medications_new (" +
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                "profile_id INTEGER NOT NULL, " +
+                "name TEXT NOT NULL, dosage TEXT, form TEXT, notes TEXT, " +
+                "pills_remaining INTEGER, refill_threshold INTEGER, created_at TEXT NOT NULL, " +
+                "FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE)",
+        )
+        db.execSQL(
+            "INSERT INTO medications_new (id, profile_id, name, dosage, form, notes, pills_remaining, refill_threshold, created_at) " +
+                "SELECT id, $DEFAULT_PROFILE_ID, name, dosage, form, notes, pills_remaining, refill_threshold, created_at FROM medications",
+        )
+        db.execSQL("DROP TABLE medications")
+        db.execSQL("ALTER TABLE medications_new RENAME TO medications")
+        db.execSQL("CREATE INDEX idx_medications_profile ON medications(profile_id)")
+
+        db.execSQL(
+            "CREATE TABLE incidents_new (" +
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                "profile_id INTEGER NOT NULL, " +
+                "type TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, " +
+                "severity TEXT, notes TEXT, created_at TEXT NOT NULL, " +
+                "FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE)",
+        )
+        db.execSQL(
+            "INSERT INTO incidents_new (id, profile_id, type, started_at, ended_at, severity, notes, created_at) " +
+                "SELECT id, $DEFAULT_PROFILE_ID, type, started_at, ended_at, severity, notes, created_at FROM incidents",
+        )
+        db.execSQL("DROP TABLE incidents")
+        db.execSQL("ALTER TABLE incidents_new RENAME TO incidents")
+        db.execSQL("CREATE INDEX idx_incidents_profile ON incidents(profile_id)")
+
+        db.execSQL(
+            "CREATE TABLE app_settings_new (" +
+                "profile_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, " +
+                "PRIMARY KEY(profile_id, key), " +
+                "FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE)",
+        )
+        db.execSQL(
+            "INSERT INTO app_settings_new (profile_id, key, value) SELECT $DEFAULT_PROFILE_ID, key, value FROM app_settings",
+        )
+        db.execSQL("DROP TABLE app_settings")
+        db.execSQL("ALTER TABLE app_settings_new RENAME TO app_settings")
+        db.execSQL("CREATE INDEX idx_app_settings_profile ON app_settings(profile_id)")
+    }
+}
+
+/** Adds an optional profile photo. A plain nullable column with no `DEFAULT` — unlike the earlier
+ * migrations above, this doesn't need the create-copy-drop-rename dance: SQLite's `ALTER TABLE
+ * ... ADD COLUMN` handles a new nullable column directly, and every pre-existing profile simply
+ * gets NULL (no photo, so [Profile] falls back to its initial-letter avatar). */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE profiles ADD COLUMN photo_path TEXT")
+    }
+}
+
 @Database(
-    entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class, Incident::class],
-    version = 7,
+    entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class, Incident::class, Profile::class],
+    version = 9,
     exportSchema = true,
 )
 abstract class TymedDatabase : RoomDatabase() {
@@ -158,6 +234,7 @@ abstract class TymedDatabase : RoomDatabase() {
     abstract fun intakeLogDao(): IntakeLogDao
     abstract fun appSettingDao(): AppSettingDao
     abstract fun incidentDao(): IncidentDao
+    abstract fun profileDao(): ProfileDao
 
     companion object {
         @Volatile
@@ -181,7 +258,7 @@ abstract class TymedDatabase : RoomDatabase() {
             val dbFile = databaseFile(context)
             dbFile.parentFile?.mkdirs()
             return Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, dbFile.absolutePath)
-                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
         }
     }

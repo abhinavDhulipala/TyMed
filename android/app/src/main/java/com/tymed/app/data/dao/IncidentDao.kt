@@ -21,15 +21,19 @@ interface IncidentDao {
     @Query("SELECT * FROM incidents WHERE id = :id")
     suspend fun getById(id: Long): Incident?
 
-    @Query("SELECT * FROM incidents WHERE type = :type AND started_at = :startedAt AND ended_at = :endedAt LIMIT 1")
-    suspend fun findMatching(type: String, startedAt: String, endedAt: String): Incident?
+    @Query("SELECT * FROM incidents WHERE profile_id = :profileId AND type = :type AND started_at = :startedAt AND ended_at = :endedAt LIMIT 1")
+    suspend fun findMatching(profileId: Long, type: String, startedAt: String, endedAt: String): Incident?
 
+    @Query("SELECT * FROM incidents WHERE profile_id = :profileId ORDER BY started_at DESC")
+    suspend fun getAllForProfile(profileId: Long): List<Incident>
+
+    /** Every incident across every profile, for a full "all profiles" data export. */
     @Query("SELECT * FROM incidents ORDER BY started_at DESC")
     suspend fun getAll(): List<Incident>
 
-    @Query("SELECT * FROM incidents ORDER BY started_at DESC LIMIT :limit")
-    suspend fun getRecent(limit: Int): List<Incident>
+    @Query("SELECT * FROM incidents WHERE profile_id = :profileId ORDER BY started_at DESC LIMIT :limit")
+    suspend fun getRecent(profileId: Long, limit: Int): List<Incident>
 
-    @Query("SELECT * FROM incidents WHERE type = :type ORDER BY started_at DESC LIMIT :limit")
-    suspend fun getByType(type: String, limit: Int): List<Incident>
+    @Query("SELECT * FROM incidents WHERE profile_id = :profileId AND type = :type ORDER BY started_at DESC LIMIT :limit")
+    suspend fun getByType(profileId: Long, type: String, limit: Int): List<Incident>
 }

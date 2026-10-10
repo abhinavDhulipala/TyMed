@@ -5,6 +5,7 @@ import com.tymed.app.data.dao.ScheduleWithMedication
 data class DoseReminderParams(
     val scheduleId: Long,
     val medicationId: Long,
+    val profileId: Long,
     val medicationName: String,
     val dosage: String?,
     val timeOfDay: String, // "HH:MM"
@@ -26,10 +27,12 @@ interface AlarmScheduler {
     /** Cancels both the daily chain and any pending snooze follow-up for one schedule. */
     fun cancelDoseReminders(scheduleId: Long)
 
-    /** Silences an alarm that's already ringing right now (e.g. dose marked taken from the UI
-     * while it was sounding) — cancelling the pending entry alone has no effect on one in
-     * progress. */
-    fun stopRinging()
+    /** Silences one specific alarm that's already ringing right now (e.g. dose marked taken from
+     * the UI while it was sounding), identified by its request code — cancelling the pending
+     * entry alone has no effect on one in progress. Scoped to a single request code so resolving
+     * one ringing dose never silences a different one still ringing (a different profile's, or
+     * the same schedule's own snooze follow-up). */
+    fun stopRinging(requestCode: Int)
 
     /** Stops today's already-armed alarm from ringing without breaking the recurring chain: the
      * daily alarm re-arms itself on every fire, so a bare cancel would silently kill future days
@@ -44,5 +47,5 @@ interface AlarmScheduler {
     /** Mirrors the follow-up (snooze) interval into fast local storage the alarm can read
      * synchronously at ring time, without an async Room query on the activity's hot path. The
      * Room `app_settings` row (via SettingsRepository) stays the source of truth for display. */
-    fun setFollowUpMinutes(minutes: Int)
+    fun setFollowUpMinutes(profileId: Long, minutes: Int)
 }

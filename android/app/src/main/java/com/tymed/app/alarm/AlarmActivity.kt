@@ -42,6 +42,7 @@ class AlarmActivity : ComponentActivity() {
     private var requestCode = -1
     private var scheduleId = -1
     private var medicationId = -1
+    private var profileId = -1
 
     private val tickHandler = Handler(Looper.getMainLooper())
     private var ringingSinceMillis = 0L
@@ -75,23 +76,38 @@ class AlarmActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this) {}
 
         showOverLockScreen()
+        loadFromIntent(intent)
+        tickHandler.post(tickRunnable)
+    }
 
+    /** This activity is `launchMode="singleTop"`: if a second alarm's full-screen intent fires
+     * while this one is already on screen (e.g. a different profile's dose due the same minute),
+     * Android reuses this instance and delivers the new intent here instead of creating another.
+     * Without this override the screen would keep showing the *first* alarm — re-parsing the
+     * extras makes it show whichever alarm most recently interrupted. The one it was showing
+     * isn't lost: [AlarmRingService] keeps it ringing under its own notification independently. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        loadFromIntent(intent)
+    }
+
+    private fun loadFromIntent(intent: Intent) {
         requestCode = intent.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1)
         scheduleId = intent.getIntExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, -1)
         medicationId = intent.getIntExtra(AlarmReceiver.EXTRA_MEDICATION_ID, -1)
+        profileId = intent.getIntExtra(AlarmReceiver.EXTRA_PROFILE_ID, -1)
         val medicationName = intent.getStringExtra(AlarmReceiver.EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent.getStringExtra(AlarmReceiver.EXTRA_DOSAGE)
         ringingSinceMillis = intent.getLongExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, -1L)
             .takeIf { it > 0 } ?: System.currentTimeMillis()
 
         val configuredMinutes = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(PREF_FOLLOW_UP_MINUTES, DEFAULT_SNOOZE_OPTIONS_MINUTES.first())
+            .getInt(prefKeyFollowUpMinutes(profileId), DEFAULT_SNOOZE_OPTIONS_MINUTES.first())
         snoozeOptions = (listOf(configuredMinutes) + DEFAULT_SNOOZE_OPTIONS_MINUTES).distinct().sorted()
         selectedSnoozeMinutes = configuredMinutes
 
         setContentView(buildLayout(medicationName, dosage))
-
-        tickHandler.post(tickRunnable)
     }
 
     override fun onDestroy() {
@@ -318,27 +334,42 @@ class AlarmActivity : ComponentActivity() {
     private fun onSnooze() {
         dismissRingingState()
         armSnooze()
-        openApp()
-        finish()
+        proceedAfterResolving()
     }
 
-    /** Clears the in-memory "an alert is firing" flag and the notification itself up front, and
+    /** Clears the in-memory "this alarm is firing" entry and its own notification up front, and
      * synchronously — not just whatever [AlarmRingService] gets around to doing asynchronously —
      * so both stay in sync with Taken/Snooze regardless of which path posted the notification
      * (the normal ringing-service path removes it too via stopForeground, but the no-service
      * fallback path, used when the OS refuses to start that foreground service, never otherwise
-     * gets cancelled). */
+     * gets cancelled). Scoped to this screen's own [requestCode] only — a different alarm (e.g.
+     * another profile's dose) may still be legitimately ringing and must be left alone. */
     private fun dismissRingingState() {
-        RingingAlarmTracker.clear()
-        NotificationManagerCompat.from(this).cancel(ALARM_NOTIFICATION_ID)
+        RingingAlarmTracker.clear(requestCode)
+        NotificationManagerCompat.from(this).cancel(requestCode)
         stopRingingService()
     }
 
     private fun stopRingingService() {
         val stopIntent = Intent(this, AlarmRingService::class.java).apply {
             action = AlarmRingService.ACTION_STOP
+            putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, requestCode)
         }
         startService(stopIntent)
+    }
+
+    /** After resolving the alarm on screen: if another alarm is still ringing (e.g. a different
+     * profile's dose that fired around the same time and reused this singleTop instance via
+     * [onNewIntent] for the newer one), show it next instead of leaving it only reachable by
+     * digging into the notification shade. Otherwise open the app as usual. */
+    private fun proceedAfterResolving() {
+        val next = RingingAlarmTracker.current.value.firstOrNull { it.requestCode != requestCode }
+        if (next != null) {
+            startActivity(ringingAlarmIntent(this, next))
+        } else {
+            openApp()
+        }
+        finish()
     }
 
     private fun cancelSnoozeChain() {
@@ -364,6 +395,7 @@ class AlarmActivity : ComponentActivity() {
                 requestCode = snoozeRequestCode,
                 scheduleId = scheduleId,
                 medicationId = medicationId,
+                profileId = profileId,
                 medicationName = medicationName,
                 dosage = dosage,
                 isPrimary = false,
@@ -378,8 +410,9 @@ class AlarmActivity : ComponentActivity() {
     }
 
     /** No more deep link back into a JS runtime — there is no JS runtime. Marks the dose
-     * directly against the Room database in-process, then opens the app. Wrapped so a failure
-     * here never leaves the user stuck on a ringing-adjacent blank screen. */
+     * directly against the Room database in-process, then proceeds (see
+     * [proceedAfterResolving]). Wrapped so a failure here never leaves the user stuck on a
+     * ringing-adjacent blank screen. */
     private fun markTakenThenOpenApp() {
         val container = (application as TymedApplication).container
         lifecycleScope.launch {
@@ -389,13 +422,19 @@ class AlarmActivity : ComponentActivity() {
             } catch (error: Exception) {
                 captureException(error)
             } finally {
-                openApp()
-                finish()
+                proceedAfterResolving()
             }
         }
     }
 
+    /** Switches the app's active profile to whichever profile owns this alarm before showing it
+     * again — otherwise a dose/medication belonging to a profile other than the one currently
+     * selected in the UI would look like it vanished. A no-op if profileId wasn't carried on the
+     * intent (e.g. an alarm armed before this field existed, surviving a reboot). */
     private fun openApp() {
+        if (profileId >= 0) {
+            (application as TymedApplication).container.activeProfile.switchTo(profileId.toLong())
+        }
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

@@ -23,6 +23,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val EXTRA_REQUEST_CODE = "requestCode"
         const val EXTRA_SCHEDULE_ID = "scheduleId"
         const val EXTRA_MEDICATION_ID = "medicationId"
+        const val EXTRA_PROFILE_ID = "profileId"
         const val EXTRA_MEDICATION_NAME = "medicationName"
         const val EXTRA_DOSAGE = "dosage"
         const val EXTRA_IS_PRIMARY = "isPrimary"
@@ -56,6 +57,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val requestCode = intent.getIntExtra(EXTRA_REQUEST_CODE, -1)
         val scheduleId = intent.getIntExtra(EXTRA_SCHEDULE_ID, -1)
         val medicationId = intent.getIntExtra(EXTRA_MEDICATION_ID, -1)
+        val profileId = intent.getIntExtra(EXTRA_PROFILE_ID, -1)
         val medicationName = intent.getStringExtra(EXTRA_MEDICATION_NAME) ?: "your medication"
         val dosage = intent.getStringExtra(EXTRA_DOSAGE)
         val isPrimary = intent.getBooleanExtra(EXTRA_IS_PRIMARY, false)
@@ -74,6 +76,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     requestCode = requestCode,
                     scheduleId = scheduleId,
                     medicationId = medicationId,
+                    profileId = profileId,
                     medicationName = medicationName,
                     dosage = dosage,
                     ringingSinceMillis = ringingSinceMillis,
@@ -85,6 +88,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_REQUEST_CODE, requestCode)
                 putExtra(EXTRA_SCHEDULE_ID, scheduleId)
                 putExtra(EXTRA_MEDICATION_ID, medicationId)
+                putExtra(EXTRA_PROFILE_ID, profileId)
                 putExtra(EXTRA_MEDICATION_NAME, medicationName)
                 putExtra(EXTRA_DOSAGE, dosage)
                 putExtra(EXTRA_RINGING_SINCE_MILLIS, ringingSinceMillis)
@@ -108,6 +112,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     requestCode,
                     scheduleId,
                     medicationId,
+                    profileId,
                     medicationName,
                     dosage,
                     ringingSinceMillis,
@@ -126,6 +131,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     requestCode,
                     scheduleId,
                     medicationId,
+                    profileId,
                     medicationName,
                     dosage,
                     hour,
@@ -144,6 +150,7 @@ class AlarmReceiver : BroadcastReceiver() {
         requestCode: Int,
         scheduleId: Int,
         medicationId: Int,
+        profileId: Int,
         medicationName: String,
         dosage: String?,
         hour: Int,
@@ -163,6 +170,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 requestCode = requestCode,
                 scheduleId = scheduleId,
                 medicationId = medicationId,
+                profileId = profileId,
                 medicationName = medicationName,
                 dosage = dosage,
                 isPrimary = true,

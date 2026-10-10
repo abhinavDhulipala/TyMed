@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
 const val ALARM_CHANNEL_ID = "tymed-alarm-ring"
-const val ALARM_NOTIFICATION_ID = 9721
 
 /** Shared by [AlarmRingService] (the normal ringing path) and [postFallbackAlarmNotification]
  * (used when the OS refuses to start that foreground service) — both need the exact same
@@ -40,6 +39,7 @@ fun buildAlarmNotification(
     requestCode: Int,
     scheduleId: Int,
     medicationId: Int,
+    profileId: Int,
     medicationName: String,
     dosage: String?,
     ringingSinceMillis: Long,
@@ -49,6 +49,7 @@ fun buildAlarmNotification(
         putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, requestCode)
         putExtra(AlarmReceiver.EXTRA_SCHEDULE_ID, scheduleId)
         putExtra(AlarmReceiver.EXTRA_MEDICATION_ID, medicationId)
+        putExtra(AlarmReceiver.EXTRA_PROFILE_ID, profileId)
         putExtra(AlarmReceiver.EXTRA_MEDICATION_NAME, medicationName)
         putExtra(AlarmReceiver.EXTRA_DOSAGE, dosage)
         putExtra(AlarmReceiver.EXTRA_RINGING_SINCE_MILLIS, ringingSinceMillis)
@@ -76,7 +77,8 @@ fun buildAlarmNotification(
  * when the OS refuses to start that foreground service — e.g. background-start restrictions
  * rejecting it on a process that's never run since a reboot. No looping sound/vibration this
  * way, but the full-screen takeover and its Taken/Snooze actions still work, so a dose alert
- * degrades instead of the whole app crashing. */
+ * degrades instead of the whole app crashing. Posted under [requestCode] (not a shared id) so it
+ * never replaces a different alarm's still-active notification. */
 // POST_NOTIFICATIONS is requested at app startup (see TymedApp.kt); if the user denied it,
 // notify() simply doesn't show anything rather than throwing — there's no crash to guard
 // against, just nothing lint can verify across files.
@@ -86,6 +88,7 @@ fun postFallbackAlarmNotification(
     requestCode: Int,
     scheduleId: Int,
     medicationId: Int,
+    profileId: Int,
     medicationName: String,
     dosage: String?,
     ringingSinceMillis: Long,
@@ -96,9 +99,10 @@ fun postFallbackAlarmNotification(
         requestCode,
         scheduleId,
         medicationId,
+        profileId,
         medicationName,
         dosage,
         ringingSinceMillis,
     )
-    NotificationManagerCompat.from(context).notify(ALARM_NOTIFICATION_ID, notification)
+    NotificationManagerCompat.from(context).notify(requestCode, notification)
 }

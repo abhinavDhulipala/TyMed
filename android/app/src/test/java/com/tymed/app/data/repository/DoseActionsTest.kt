@@ -31,11 +31,12 @@ class DoseActionsTest {
         alarmScheduler = FakeAlarmScheduler()
         doseActions = DoseActions(logs, medications, schedules, alarmScheduler)
 
-        medicationId = medications.createMedication(MedicationInput("Aspirin", "81mg", null, null, 10, null))
+        medicationId = medications.createMedication(TEST_PROFILE_ID, MedicationInput("Aspirin", "81mg", null, null, 10, null))
         scheduleId = schedules.createSchedule(medicationId, "08:00", RecurrenceInput(RecurrenceType.DAILY, null, null, null))
     }
 
-    private suspend fun todaysLogId(): Long = logs.getDosesForDate(todayDateString()).first { it.log.scheduleId == scheduleId }.log.id
+    private suspend fun todaysLogId(): Long =
+        logs.getDosesForDate(TEST_PROFILE_ID, todayDateString()).first { it.log.scheduleId == scheduleId }.log.id
 
     @Test
     fun `marking a dose taken decrements pill count and marking it pending again restores it`() = runTest {
