@@ -28,22 +28,22 @@ class ProfilesViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun addProfile(name: String) {
+    fun addProfile(name: String, photoPath: String?) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
             val nextColor = ProfileColors.forIndex(_uiState.value.profiles.size)
-            val id = container.profileRepository.createProfile(trimmed, nextColor)
+            val id = container.profileRepository.createProfile(trimmed, nextColor, photoPath)
             refresh()
             container.activeProfile.switchTo(id)
         }
     }
 
-    fun renameProfile(id: Long, name: String, colorHex: String) {
+    fun updateProfile(id: Long, name: String, colorHex: String, photoPath: String?) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
-            container.profileRepository.renameProfile(id, trimmed, colorHex)
+            container.profileRepository.updateProfile(id, trimmed, colorHex, photoPath)
             refresh()
         }
     }

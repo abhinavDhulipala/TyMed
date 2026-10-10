@@ -6,7 +6,10 @@ import androidx.room.PrimaryKey
 
 /** One person sharing this device — each owns their own medications, schedules, dose history,
  * incidents, and app settings. [colorHex] picks a swatch from [ProfileColors.PALETTE] for the
- * initial-letter avatar bubble shown in the top bar switcher; there's no photo upload in v1. */
+ * initial-letter avatar bubble shown wherever [photoPath] is null (no photo set, or the file is
+ * gone). [photoPath] is an absolute path to a downscaled JPEG copy this app made of whatever the
+ * user picked — see [com.tymed.app.data.ProfilePhotoStore] — never a content:// Uri, since a
+ * picker Uri's read grant isn't guaranteed to outlive the app session. */
 @Entity(tableName = "profiles")
 data class Profile(
     @PrimaryKey(autoGenerate = true)
@@ -15,6 +18,8 @@ data class Profile(
     val name: String,
     @ColumnInfo(name = "color_hex")
     val colorHex: String,
+    @ColumnInfo(name = "photo_path")
+    val photoPath: String? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: String,
 )

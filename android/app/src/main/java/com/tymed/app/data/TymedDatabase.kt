@@ -213,9 +213,19 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/** Adds an optional profile photo. A plain nullable column with no `DEFAULT` — unlike the earlier
+ * migrations above, this doesn't need the create-copy-drop-rename dance: SQLite's `ALTER TABLE
+ * ... ADD COLUMN` handles a new nullable column directly, and every pre-existing profile simply
+ * gets NULL (no photo, so [Profile] falls back to its initial-letter avatar). */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE profiles ADD COLUMN photo_path TEXT")
+    }
+}
+
 @Database(
     entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class, Incident::class, Profile::class],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class TymedDatabase : RoomDatabase() {
@@ -248,7 +258,7 @@ abstract class TymedDatabase : RoomDatabase() {
             val dbFile = databaseFile(context)
             dbFile.parentFile?.mkdirs()
             return Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, dbFile.absolutePath)
-                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
         }
     }
