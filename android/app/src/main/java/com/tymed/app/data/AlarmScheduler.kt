@@ -27,10 +27,12 @@ interface AlarmScheduler {
     /** Cancels both the daily chain and any pending snooze follow-up for one schedule. */
     fun cancelDoseReminders(scheduleId: Long)
 
-    /** Silences an alarm that's already ringing right now (e.g. dose marked taken from the UI
-     * while it was sounding) — cancelling the pending entry alone has no effect on one in
-     * progress. */
-    fun stopRinging()
+    /** Silences one specific alarm that's already ringing right now (e.g. dose marked taken from
+     * the UI while it was sounding), identified by its request code — cancelling the pending
+     * entry alone has no effect on one in progress. Scoped to a single request code so resolving
+     * one ringing dose never silences a different one still ringing (a different profile's, or
+     * the same schedule's own snooze follow-up). */
+    fun stopRinging(requestCode: Int)
 
     /** Stops today's already-armed alarm from ringing without breaking the recurring chain: the
      * daily alarm re-arms itself on every fire, so a bare cancel would silently kill future days

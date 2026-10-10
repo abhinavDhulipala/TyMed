@@ -49,9 +49,12 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
         cancelAlarm(context, scheduleId.toInt() + SNOOZE_REQUEST_CODE_OFFSET)
     }
 
-    override fun stopRinging() {
+    override fun stopRinging(requestCode: Int) {
         context.startService(
-            Intent(context, AlarmRingService::class.java).apply { action = AlarmRingService.ACTION_STOP },
+            Intent(context, AlarmRingService::class.java).apply {
+                action = AlarmRingService.ACTION_STOP
+                putExtra(AlarmReceiver.EXTRA_REQUEST_CODE, requestCode)
+            },
         )
     }
 
@@ -64,8 +67,11 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
         cancelDoseReminders(id)
         // Cancelling above only stops *future* fires — if this schedule's alarm is ringing right
         // now (e.g. the dose was marked taken from the app UI while it sounded), it keeps
-        // ringing until told to stop explicitly.
-        stopRinging()
+        // ringing until told to stop explicitly. Stop both possible request codes (the daily
+        // chain and its own snooze follow-up) — whichever one, if either, is actually ringing —
+        // without touching any other schedule's still-ringing alarm.
+        stopRinging(id.toInt())
+        stopRinging(id.toInt() + SNOOZE_REQUEST_CODE_OFFSET)
 
         val endDate = schedule.schedule.endDate
         val tomorrow = todayDateString(LocalDate.now().plusDays(1))

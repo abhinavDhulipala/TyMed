@@ -143,4 +143,57 @@ class AlarmActivitySnoozeTest {
 
         controller.destroy()
     }
+
+    /** Two profiles' doses can legitimately be due at the same moment on a shared device —
+     * resolving the one currently on screen must never make the other one (still ringing, under
+     * its own notification) unreachable except by digging through the shade. */
+    @Test
+    fun `resolving one ringing alarm chains to another still-ringing one instead of just opening the app`() {
+        val firstScheduleId = 61
+        val secondScheduleId = 62
+
+        RingingAlarmTracker.start(
+            RingingAlarmInfo(
+                requestCode = firstScheduleId,
+                scheduleId = firstScheduleId,
+                medicationId = 1,
+                profileId = 1,
+                medicationName = "Aspirin",
+                dosage = "81mg",
+                ringingSinceMillis = System.currentTimeMillis(),
+            ),
+        )
+        RingingAlarmTracker.start(
+            RingingAlarmInfo(
+                requestCode = secondScheduleId,
+                scheduleId = secondScheduleId,
+                medicationId = 2,
+                profileId = 2,
+                medicationName = "Metformin",
+                dosage = null,
+                ringingSinceMillis = System.currentTimeMillis(),
+            ),
+        )
+
+        val controller = Robolectric.buildActivity(AlarmActivity::class.java, ringIntent(firstScheduleId, firstScheduleId))
+        val activity = controller.create().start().resume().get()
+
+        val snoozeButton = findButton(activity.window.decorView) { it.startsWith("Snooze") }
+        snoozeButton.performClick()
+
+        val nextIntent = shadowOf(activity).nextStartedActivity
+        assertEquals(
+            "resolving the first alarm should immediately show the second one, not just open the app",
+            AlarmActivity::class.java.name,
+            nextIntent?.component?.className,
+        )
+        assertEquals(secondScheduleId, nextIntent?.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1))
+
+        val stillRinging = RingingAlarmTracker.current.value.map { it.requestCode }
+        assertFalse("the resolved alarm should no longer be tracked as ringing", stillRinging.contains(firstScheduleId))
+        assertTrue("the other alarm must still be tracked as ringing", stillRinging.contains(secondScheduleId))
+
+        controller.destroy()
+        RingingAlarmTracker.clear(secondScheduleId)
+    }
 }
