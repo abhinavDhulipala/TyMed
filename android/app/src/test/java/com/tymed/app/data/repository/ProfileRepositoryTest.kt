@@ -1,5 +1,8 @@
 package com.tymed.app.data.repository
 
+import com.tymed.app.data.FakeAlarmScheduler
+import com.tymed.app.data.TymedDatabase
+import com.tymed.app.data.entity.RecurrenceType
 import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -13,11 +16,15 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class ProfileRepositoryTest {
+    private lateinit var db: TymedDatabase
+    private lateinit var alarmScheduler: FakeAlarmScheduler
     private lateinit var repository: ProfileRepository
 
     @Before
     fun setUp() {
-        repository = ProfileRepository(newInMemoryDatabase().profileDao())
+        db = newInMemoryDatabase()
+        alarmScheduler = FakeAlarmScheduler()
+        repository = ProfileRepository(db.profileDao(), db.scheduleDao(), alarmScheduler)
     }
 
     /** A real (if empty) file, so deletion is actually observable — [ProfilePhotoStore.delete] is
@@ -70,11 +77,40 @@ class ProfileRepositoryTest {
         assertFalse(photo.exists())
     }
 
+    /** The FK cascade removes the schedules from Room, but their armed alarms re-arm themselves
+     * from intent extras and would keep ringing daily — only this profile's must be cancelled. */
+    @Test
+    fun `deleteProfile cancels the alarms for every one of its schedules, and only its own`() = runTest {
+        val medications = MedicationRepository(db.medicationDao())
+        val schedules = ScheduleRepository(db.scheduleDao())
+        val daily = RecurrenceInput(RecurrenceType.DAILY, null, null, null)
+        fun med(name: String) = MedicationInput(name, null, null, null, null, null)
+
+        val momId = repository.createProfile("Mom", "#3D405B")
+        val momMedA = medications.createMedication(momId, med("Aspirin"))
+        val momMedB = medications.createMedication(momId, med("Metformin"))
+        val momSchedules = listOf(
+            schedules.createSchedule(momMedA, "08:00", daily),
+            schedules.createSchedule(momMedA, "20:00", daily),
+            schedules.createSchedule(momMedB, "12:00", daily),
+        )
+        val myMed = medications.createMedication(TEST_PROFILE_ID, med("Vitamin D"))
+        val mySchedule = schedules.createSchedule(myMed, "09:00", daily)
+
+        assertTrue(repository.deleteProfile(momId))
+
+        assertEquals(momSchedules.toSet(), alarmScheduler.cancelled.toSet())
+        assertFalse(alarmScheduler.cancelled.contains(mySchedule))
+        assertEquals(listOf(momId), alarmScheduler.clearedFollowUpMinutes)
+        assertTrue("the cascade should still remove the schedules themselves", schedules.listSchedulesForProfile(momId).isEmpty())
+    }
+
     @Test
     fun `deleteProfile refuses to delete the last remaining profile`() = runTest {
         val deleted = repository.deleteProfile(TEST_PROFILE_ID)
 
         assertFalse(deleted)
         assertEquals(1, repository.listProfiles().size)
+        assertTrue("a refused delete must leave alarms alone", alarmScheduler.cancelled.isEmpty())
     }
 }

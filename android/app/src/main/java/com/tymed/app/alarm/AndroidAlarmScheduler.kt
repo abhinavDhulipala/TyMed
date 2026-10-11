@@ -128,6 +128,13 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
             .apply()
     }
 
+    override fun clearFollowUpMinutes(profileId: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(prefKeyFollowUpMinutes(profileId.toInt()))
+            .apply()
+    }
+
     private fun parseTimeOfDay(timeOfDay: String): Pair<Int, Int> {
         val (h, m) = timeOfDay.split(":")
         return h.toInt() to m.toInt()

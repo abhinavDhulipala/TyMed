@@ -30,10 +30,10 @@ class ImportRepositoryTest {
     @Before
     fun setUp() {
         db = newInMemoryDatabase()
-        profiles = ProfileRepository(db.profileDao())
+        alarmScheduler = FakeAlarmScheduler()
+        profiles = ProfileRepository(db.profileDao(), db.scheduleDao(), alarmScheduler)
         medications = MedicationRepository(db.medicationDao())
         schedules = ScheduleRepository(db.scheduleDao())
-        alarmScheduler = FakeAlarmScheduler()
         importer = ImportRepository(db, profiles, medications, schedules, alarmScheduler)
     }
 
@@ -159,13 +159,14 @@ class ImportRepositoryTest {
             ),
         )
         val otherDb = newInMemoryDatabase()
-        val otherProfiles = ProfileRepository(otherDb.profileDao())
+        val otherAlarmScheduler = FakeAlarmScheduler()
+        val otherProfiles = ProfileRepository(otherDb.profileDao(), otherDb.scheduleDao(), otherAlarmScheduler)
         val otherImporter = ImportRepository(
             otherDb,
             otherProfiles,
             MedicationRepository(otherDb.medicationDao()),
             ScheduleRepository(otherDb.scheduleDao()),
-            FakeAlarmScheduler(),
+            otherAlarmScheduler,
         )
 
         val result = otherImporter.importData(TEST_PROFILE_ID, ImportParser.parse(exported.toByteArray()))

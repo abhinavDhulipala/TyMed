@@ -48,4 +48,7 @@ interface AlarmScheduler {
      * synchronously at ring time, without an async Room query on the activity's hot path. The
      * Room `app_settings` row (via SettingsRepository) stays the source of truth for display. */
     fun setFollowUpMinutes(profileId: Long, minutes: Int)
+
+    /** Drops a deleted profile's mirrored follow-up interval from that same local storage. */
+    fun clearFollowUpMinutes(profileId: Long)
 }

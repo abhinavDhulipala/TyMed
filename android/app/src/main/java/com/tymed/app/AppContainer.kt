@@ -29,7 +29,7 @@ class AppContainer(context: Context) {
     /** Who's currently active in the UI — see [ActiveProfile] for how screens read/react to it. */
     val activeProfile = ActiveProfile(context)
 
-    val profileRepository = ProfileRepository(database.profileDao())
+    val profileRepository = ProfileRepository(database.profileDao(), database.scheduleDao(), alarmScheduler)
     val medicationRepository = MedicationRepository(database.medicationDao())
     val scheduleRepository = ScheduleRepository(database.scheduleDao())
     val intakeLogRepository = IntakeLogRepository(database.intakeLogDao(), database.scheduleDao())

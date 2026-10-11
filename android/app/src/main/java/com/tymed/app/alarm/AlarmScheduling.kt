@@ -4,6 +4,8 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.tymed.app.data.entity.DEFAULT_PROFILE_ID
+import com.tymed.app.data.repository.DEFAULT_FOLLOW_UP_MINUTES
 
 /** Chain B (snooze) alarms reuse the schedule id as a base, offset so they never collide with
  * the Chain A (daily) request code for the same schedule. Single named constant shared by
@@ -17,6 +19,26 @@ private const val PREF_FOLLOW_UP_MINUTES_PREFIX = "follow_up_minutes_"
 /** Per-profile key into [PREFS_NAME] — each profile's alarms snooze by their own configured
  * follow-up interval, not whichever profile happens to be active in the UI. */
 fun prefKeyFollowUpMinutes(profileId: Int): String = "$PREF_FOLLOW_UP_MINUTES_PREFIX$profileId"
+
+/** The single, unscoped key the follow-up interval was mirrored under before multi-profile. */
+private const val LEGACY_PREF_FOLLOW_UP_MINUTES = "follow_up_minutes"
+
+/** One-time move of the pre-multi-profile follow-up interval onto [DEFAULT_PROFILE_ID] — the same
+ * profile [com.tymed.app.data.MIGRATION_7_8] backfills every existing Room row onto. Without it an
+ * upgraded user's alarms silently snooze at the default until they re-save Settings. Synchronous,
+ * and run from Application.onCreate, so it's done before any alarm can read the new key — even on
+ * a cold start that the alarm itself triggered. Never overwrites a value already saved under the
+ * new key. */
+fun migrateLegacyFollowUpMinutes(context: Context) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    if (!prefs.contains(LEGACY_PREF_FOLLOW_UP_MINUTES)) return
+    val newKey = prefKeyFollowUpMinutes(DEFAULT_PROFILE_ID.toInt())
+    val editor = prefs.edit()
+    if (!prefs.contains(newKey)) {
+        editor.putInt(newKey, prefs.getInt(LEGACY_PREF_FOLLOW_UP_MINUTES, DEFAULT_FOLLOW_UP_MINUTES))
+    }
+    editor.remove(LEGACY_PREF_FOLLOW_UP_MINUTES).apply()
+}
 
 data class AlarmSchedule(
     val triggerAtMillis: Long,

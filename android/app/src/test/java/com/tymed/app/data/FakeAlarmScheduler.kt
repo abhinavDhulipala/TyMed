@@ -12,6 +12,7 @@ class FakeAlarmScheduler : AlarmScheduler {
     val skipped = mutableListOf<ScheduleWithMedication>()
     val rearmed = mutableListOf<List<ScheduleWithMedication>>()
     val followUpMinutes = mutableListOf<Int>()
+    val clearedFollowUpMinutes = mutableListOf<Long>()
 
     override fun scheduleDoseReminders(params: DoseReminderParams) {
         scheduled += params
@@ -36,5 +37,9 @@ class FakeAlarmScheduler : AlarmScheduler {
 
     override fun setFollowUpMinutes(profileId: Long, minutes: Int) {
         followUpMinutes += minutes
+    }
+
+    override fun clearFollowUpMinutes(profileId: Long) {
+        clearedFollowUpMinutes += profileId
     }
 }

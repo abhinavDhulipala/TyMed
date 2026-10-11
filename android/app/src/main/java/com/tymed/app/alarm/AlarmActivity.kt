@@ -361,14 +361,20 @@ class AlarmActivity : ComponentActivity() {
     /** After resolving the alarm on screen: if another alarm is still ringing (e.g. a different
      * profile's dose that fired around the same time and reused this singleTop instance via
      * [onNewIntent] for the newer one), show it next instead of leaving it only reachable by
-     * digging into the notification shade. Otherwise open the app as usual. */
+     * digging into the notification shade. Otherwise open the app as usual.
+     *
+     * The next alarm is shown in place, not via startActivity(): this activity is singleTop, so
+     * that intent would be delivered straight back to this same instance through [onNewIntent]
+     * — and then the finish() meant for the resolved alarm would close the next one too. */
     private fun proceedAfterResolving() {
         val next = RingingAlarmTracker.current.value.firstOrNull { it.requestCode != requestCode }
         if (next != null) {
-            startActivity(ringingAlarmIntent(this, next))
-        } else {
-            openApp()
+            val nextIntent = ringingAlarmIntent(this, next)
+            setIntent(nextIntent)
+            loadFromIntent(nextIntent)
+            return
         }
+        openApp()
         finish()
     }
 

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,6 +55,12 @@ class AlarmActivitySnoozeTest {
         findButton(root, predicate)
     } catch (e: IllegalStateException) {
         null
+    }
+
+    private fun hasText(root: View, text: String): Boolean = when (root) {
+        is TextView -> root.text.toString().contains(text)
+        is ViewGroup -> (0 until root.childCount).any { hasText(root.getChildAt(it), text) }
+        else -> false
     }
 
     private fun pendingBroadcastExists(requestCode: Int): Boolean =
@@ -181,13 +188,19 @@ class AlarmActivitySnoozeTest {
         val snoozeButton = findButton(activity.window.decorView) { it.startsWith("Snooze") }
         snoozeButton.performClick()
 
-        val nextIntent = shadowOf(activity).nextStartedActivity
+        // Shown in place on this same instance — a startActivity() here would be delivered back
+        // to this singleTop instance and then torn down by its own finish().
+        assertFalse("the screen must stay up to show the second alarm", activity.isFinishing)
         assertEquals(
-            "resolving the first alarm should immediately show the second one, not just open the app",
-            AlarmActivity::class.java.name,
-            nextIntent?.component?.className,
+            "nothing should be started — not the app, and not a second copy of this screen",
+            null,
+            shadowOf(activity).nextStartedActivity,
         )
-        assertEquals(secondScheduleId, nextIntent?.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1))
+        assertEquals(secondScheduleId, activity.intent.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1))
+        assertTrue(
+            "the screen should now be showing the second alarm's medication",
+            hasText(activity.window.decorView, "Metformin"),
+        )
 
         val stillRinging = RingingAlarmTracker.current.value.map { it.requestCode }
         assertFalse("the resolved alarm should no longer be tracked as ringing", stillRinging.contains(firstScheduleId))
