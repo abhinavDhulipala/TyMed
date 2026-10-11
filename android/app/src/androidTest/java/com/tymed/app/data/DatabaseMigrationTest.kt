@@ -403,6 +403,14 @@ class DatabaseMigrationTest {
                     "VALUES (1, 'Seizure', '2026-09-20T08:00:00Z', '2026-09-20T08:01:30Z', 'mild', NULL, '2026-09-20T08:01:30Z')",
             )
             legacy.execSQL("INSERT INTO app_settings (key, value) VALUES ('use_24_hour_format', '1')")
+            legacy.execSQL(
+                "INSERT INTO schedules (id, medication_id, time_of_day, enabled, recurrence_type) " +
+                    "VALUES (1, 1, '08:00', 1, 'daily')",
+            )
+            legacy.execSQL(
+                "INSERT INTO intake_logs (id, medication_id, schedule_id, scheduled_date, scheduled_time, status, taken_at) " +
+                    "VALUES (1, 1, 1, '2026-09-20', '08:00', 'taken', '2026-09-20T08:02:00Z')",
+            )
 
             legacy.version = 7
         }
@@ -427,6 +435,17 @@ class DatabaseMigrationTest {
 
                 assertEquals("1", db.appSettingDao().get(defaultProfileId, "use_24_hour_format"))
             }
+
+            // Rebuilding `medications` drops the old parent table, which `schedules` and
+            // `intake_logs` reference with ON DELETE CASCADE — they must survive it.
+            val sqlite = db.openHelper.readableDatabase
+            sqlite.query("SELECT COUNT(*) FROM schedules WHERE medication_id = 1").use { c ->
+                c.moveToFirst(); assertEquals(1, c.getInt(0))
+            }
+            sqlite.query("SELECT COUNT(*) FROM intake_logs WHERE medication_id = 1 AND schedule_id = 1").use { c ->
+                c.moveToFirst(); assertEquals(1, c.getInt(0))
+            }
+            sqlite.query("PRAGMA foreign_key_check").use { c -> assertEquals(0, c.count) }
         } finally {
             db.close()
             dbFile.delete()
