@@ -52,9 +52,10 @@ interface IntakeLogDao {
     @Query(
         "SELECT intake_logs.*, medications.name AS medicationName, medications.dosage AS dosage " +
             "FROM intake_logs JOIN medications ON medications.id = intake_logs.medication_id " +
-            "WHERE intake_logs.scheduled_date = :date ORDER BY intake_logs.scheduled_time",
+            "WHERE intake_logs.scheduled_date = :date AND medications.profile_id = :profileId " +
+            "ORDER BY intake_logs.scheduled_time",
     )
-    suspend fun getDosesForDate(date: String): List<DoseWithMedication>
+    suspend fun getDosesForDate(profileId: Long, date: String): List<DoseWithMedication>
 
     @Query(
         "SELECT intake_logs.*, medications.name AS medicationName, medications.dosage AS dosage " +
@@ -64,15 +65,23 @@ interface IntakeLogDao {
     suspend fun getDoseById(id: Long): DoseWithMedication?
 
     @Query(
-        "SELECT scheduled_date AS scheduledDate, " +
-            "SUM(CASE WHEN status = 'taken' THEN 1 ELSE 0 END) AS taken, " +
-            "SUM(CASE WHEN status IN ('taken', 'skipped') THEN 1 ELSE 0 END) AS resolved " +
-            "FROM intake_logs WHERE scheduled_date BETWEEN :start AND :end GROUP BY scheduled_date",
+        "SELECT intake_logs.scheduled_date AS scheduledDate, " +
+            "SUM(CASE WHEN intake_logs.status = 'taken' THEN 1 ELSE 0 END) AS taken, " +
+            "SUM(CASE WHEN intake_logs.status IN ('taken', 'skipped') THEN 1 ELSE 0 END) AS resolved " +
+            "FROM intake_logs JOIN medications ON medications.id = intake_logs.medication_id " +
+            "WHERE medications.profile_id = :profileId AND intake_logs.scheduled_date BETWEEN :start AND :end " +
+            "GROUP BY intake_logs.scheduled_date",
     )
-    suspend fun getDailyAdherence(start: String, end: String): List<DailyAdherenceRow>
+    suspend fun getDailyAdherence(profileId: Long, start: String, end: String): List<DailyAdherenceRow>
 
     @Query("SELECT status FROM intake_logs WHERE schedule_id = :scheduleId AND scheduled_date = :date")
     suspend fun getStatus(scheduleId: Long, date: String): String?
+
+    @Query(
+        "SELECT intake_logs.* FROM intake_logs JOIN medications ON medications.id = intake_logs.medication_id " +
+            "WHERE medications.profile_id = :profileId ORDER BY intake_logs.scheduled_date, intake_logs.scheduled_time",
+    )
+    suspend fun getAllForProfile(profileId: Long): List<IntakeLog>
 
     @Query("SELECT * FROM intake_logs ORDER BY scheduled_date, scheduled_time")
     suspend fun getAll(): List<IntakeLog>

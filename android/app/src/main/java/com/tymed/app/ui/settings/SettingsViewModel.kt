@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class ExportScope { ACTIVE_PROFILE, ALL_PROFILES }
+
 data class SettingsUiState(
     val use24HourFormat: Boolean = false,
     val aiAssistantEnabled: Boolean = false,
@@ -41,23 +43,18 @@ sealed interface ImportDialog {
     data class Failed(val message: String) : ImportDialog
 }
 
-class SettingsViewModel(private val container: AppContainer) : ViewModel() {
+class SettingsViewModel(private val container: AppContainer, private val profileId: Long) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState
 
     init {
         viewModelScope.launch {
             val settings = container.settingsRepository
-            val use24HourFormat = settings.getUse24HourFormat()
-            val aiAssistantEnabled = settings.getAiAssistantEnabled()
-            val followUpMinutes = settings.getFollowUpMinutes()
-            _uiState.update {
-                it.copy(
-                    use24HourFormat = use24HourFormat,
-                    aiAssistantEnabled = aiAssistantEnabled,
-                    followUpMinutesInput = followUpMinutes.toString(),
-                )
-            }
+            _uiState.value = SettingsUiState(
+                use24HourFormat = settings.getUse24HourFormat(profileId),
+                aiAssistantEnabled = settings.getAiAssistantEnabled(profileId),
+                followUpMinutesInput = settings.getFollowUpMinutes(profileId).toString(),
+            )
             TimeFormatPreference.use24Hour = _uiState.value.use24HourFormat
             AiAssistantPreference.enabled = _uiState.value.aiAssistantEnabled
         }
@@ -65,7 +62,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setUse24HourFormat(value: Boolean) {
         viewModelScope.launch {
-            container.settingsRepository.setUse24HourFormat(value)
+            container.settingsRepository.setUse24HourFormat(profileId, value)
             TimeFormatPreference.use24Hour = value
             _uiState.update { it.copy(use24HourFormat = value) }
         }
@@ -73,7 +70,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setAiAssistantEnabled(value: Boolean) {
         viewModelScope.launch {
-            container.settingsRepository.setAiAssistantEnabled(value)
+            container.settingsRepository.setAiAssistantEnabled(profileId, value)
             AiAssistantPreference.enabled = value
             _uiState.update { it.copy(aiAssistantEnabled = value) }
         }
@@ -86,8 +83,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun saveFollowUpMinutes() {
         val minutes = _uiState.value.followUpMinutesInput.toIntOrNull()?.takeIf { it > 0 } ?: DEFAULT_FOLLOW_UP_MINUTES
         viewModelScope.launch {
-            container.settingsRepository.setFollowUpMinutes(minutes)
-            container.alarmScheduler.setFollowUpMinutes(minutes)
+            container.settingsRepository.setFollowUpMinutes(profileId, minutes)
+            container.alarmScheduler.setFollowUpMinutes(profileId, minutes)
             _uiState.update { it.copy(followUpMinutesInput = minutes.toString()) }
         }
     }
@@ -95,8 +92,11 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** Renders a full export in the given [format] to a timestamped file under
      * `cacheDir/exports/` and returns it, for the caller to hand to a FileProvider-backed share
      * intent. Runs off the main thread since it touches disk and reads the whole database. */
-    suspend fun exportData(format: ExportFormat, cacheDir: File): File = withContext(Dispatchers.IO) {
-        val snapshot = container.exportRepository.loadSnapshot()
+    suspend fun exportData(format: ExportFormat, scope: ExportScope, cacheDir: File): File = withContext(Dispatchers.IO) {
+        val snapshot = when (scope) {
+            ExportScope.ACTIVE_PROFILE -> container.exportRepository.loadSnapshot(profileId)
+            ExportScope.ALL_PROFILES -> container.exportRepository.loadSnapshotForAllProfiles()
+        }
         val bytes = format.render(snapshot)
         val dir = File(cacheDir, "exports").apply { mkdirs() }
         File(dir, "tymed-export-${Instant.now().epochSecond}.${format.fileExtension}").apply { writeBytes(bytes) }
@@ -128,7 +128,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         _uiState.update { it.copy(importDialog = ImportDialog.Importing) }
         viewModelScope.launch {
             val dialog = try {
-                ImportDialog.Done(withContext(Dispatchers.IO) { container.importRepository.importData(confirm.data) })
+                ImportDialog.Done(withContext(Dispatchers.IO) { container.importRepository.importData(profileId, confirm.data) })
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {

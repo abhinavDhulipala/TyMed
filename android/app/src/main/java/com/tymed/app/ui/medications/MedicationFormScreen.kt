@@ -22,9 +22,10 @@ fun MedicationFormScreen(
     modifier: Modifier = Modifier,
 ) {
     val container = rememberAppContainer()
+    val profileId = container.activeProfile.current
     val viewModel: MedicationFormViewModel = viewModel(
         key = "medication-form-$medicationId",
-        factory = TymedViewModelFactory(container) { MedicationFormViewModel(it, medicationId) },
+        factory = TymedViewModelFactory(container) { MedicationFormViewModel(it, profileId, medicationId) },
     )
     val uiState by viewModel.uiState.collectAsState()
 

@@ -16,11 +16,12 @@ class IntakeLogRepository(
     private val logDao: IntakeLogDao,
     private val scheduleDao: ScheduleDao,
 ) {
-    /** Lazily creates a date's pending log rows for every enabled schedule that recurs on it and
-     * doesn't have a row yet. Works for any date — past, today, or future — so a day's doses
-     * exist as soon as it's viewed, not just once it becomes "today". */
-    suspend fun ensureLogsForDate(dateStr: String) {
-        val schedules = scheduleDao.listAllEnabled()
+    /** Lazily creates a date's pending log rows for every enabled schedule (belonging to
+     * [profileId]) that recurs on it and doesn't have a row yet. Works for any date — past,
+     * today, or future — so a day's doses exist as soon as it's viewed, not just once it becomes
+     * "today". */
+    suspend fun ensureLogsForDate(profileId: Long, dateStr: String) {
+        val schedules = scheduleDao.listAllEnabledForProfile(profileId)
         for (schedule in schedules) {
             val rule = RecurrenceRule(
                 recurrenceType = schedule.recurrenceType,
@@ -48,9 +49,9 @@ class IntakeLogRepository(
     /** All doses scheduled for one specific date — including today, present and future times
      * alike. The Today screen is just this called with today's date: a day is a day, today
      * isn't special. */
-    suspend fun getDosesForDate(dateStr: String): List<DoseWithMedication> {
-        ensureLogsForDate(dateStr)
-        return logDao.getDosesForDate(dateStr)
+    suspend fun getDosesForDate(profileId: Long, dateStr: String): List<DoseWithMedication> {
+        ensureLogsForDate(profileId, dateStr)
+        return logDao.getDosesForDate(profileId, dateStr)
     }
 
     suspend fun getLog(logId: Long): IntakeLog? = logDao.getById(logId)
@@ -65,13 +66,12 @@ class IntakeLogRepository(
     suspend fun setLogTakenAt(logId: Long, takenAtIso: String) = logDao.setTakenAt(logId, takenAtIso)
 
     /** Resolves today's log row for a given schedule, creating it if needed (used by the alarm's
-     * Taken button). Falls back to inserting the row directly if ensureLogsForDate's
-     * recurrence-active check didn't create one for today (e.g. the schedule was edited between
-     * the alarm arming and it ringing) — the alarm having fired at all is itself proof this dose
-     * is due today, so this must not leave Taken with nothing to mark. */
+     * Taken button, which only knows the scheduleId, not which profile it belongs to). Inserts
+     * the row directly rather than going through [ensureLogsForDate]'s whole-profile sweep —
+     * the alarm having fired at all is itself proof this dose is due today, so this must not
+     * leave Taken with nothing to mark. */
     suspend fun findOrCreateTodayLogForSchedule(scheduleId: Long): IntakeLog {
         val today = todayDateString()
-        ensureLogsForDate(today)
         val existing = logDao.findBySchedule(scheduleId, today)
         if (existing != null) return existing
 
@@ -93,13 +93,16 @@ class IntakeLogRepository(
     }
 
     /** Per-day taken/resolved counts between two dates (inclusive), for the adherence calendar. */
-    suspend fun getDailyAdherence(startDate: String, endDate: String): Map<String, DailyAdherence> =
-        logDao.getDailyAdherence(startDate, endDate).associate { row: DailyAdherenceRow ->
+    suspend fun getDailyAdherence(profileId: Long, startDate: String, endDate: String): Map<String, DailyAdherence> =
+        logDao.getDailyAdherence(profileId, startDate, endDate).associate { row: DailyAdherenceRow ->
             row.scheduledDate to DailyAdherence(row.taken, row.resolved)
         }
 
     suspend fun getTodayStatusForSchedule(scheduleId: Long): String? = logDao.getStatus(scheduleId, todayDateString())
 
-    /** Every intake log ever recorded, for a full data export. */
+    /** Every intake log belonging to [profileId], for a single-profile data export. */
+    suspend fun listLogsForProfile(profileId: Long): List<IntakeLog> = logDao.getAllForProfile(profileId)
+
+    /** Every intake log across every profile, for a full "all profiles" data export. */
     suspend fun listAllLogs(): List<IntakeLog> = logDao.getAll()
 }

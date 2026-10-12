@@ -7,18 +7,26 @@ import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.entity.Incident
 import com.tymed.app.data.entity.IntakeLog
 import com.tymed.app.data.entity.Medication
+import com.tymed.app.data.entity.ProfileColors
 import com.tymed.app.data.entity.Schedule
 
-/** Everything [com.tymed.app.importer.ImportParser] recovered from an export file — the import
- * side's counterpart to [ExportSnapshot], minus settings (those are per-device preferences, not
- * history, so an import leaves them alone). Every id here is the *source* database's id: only
- * meaningful for linking rows to each other within the file, never written to this database. */
-data class ImportData(
+/** One profile section recovered from an export file — the import side's counterpart to
+ * [ProfileExport], minus settings (those are per-device preferences, not history, so an import
+ * leaves them alone). Every id here is the *source* database's id: only meaningful for linking
+ * rows to each other within the file, never written to this database. [Medication.profileId]/
+ * [Incident.profileId] on these rows are placeholders ([ImportParser] can't know the real one at
+ * parse time) — [ImportRepository] always overwrites them with the resolved target profile. */
+data class ImportProfileData(
+    val profileName: String,
     val medications: List<Medication>,
     val schedules: List<Schedule>,
     val intakeLogs: List<IntakeLog>,
     val incidents: List<Incident>,
 )
+
+/** [com.tymed.app.importer.ImportParser]'s result — one section per profile the file described.
+ * A single-profile export ("this profile" in Settings) is just the one-element case. */
+data class ImportData(val profiles: List<ImportProfileData>)
 
 data class ImportResult(
     val medicationsAdded: Int = 0,
@@ -29,7 +37,16 @@ data class ImportResult(
     val incidentsAdded: Int = 0,
     /** Rows already on this device, or that referenced a row the file didn't contain. */
     val skipped: Int = 0,
-)
+) {
+    operator fun plus(other: ImportResult) = ImportResult(
+        medicationsAdded = medicationsAdded + other.medicationsAdded,
+        schedulesAdded = schedulesAdded + other.schedulesAdded,
+        dosesAdded = dosesAdded + other.dosesAdded,
+        dosesUpdated = dosesUpdated + other.dosesUpdated,
+        incidentsAdded = incidentsAdded + other.incidentsAdded,
+        skipped = skipped + other.skipped,
+    )
+}
 
 /** Merges an [ImportData] into the database rather than replacing what's there, so importing is
  * never destructive and re-importing the same file is a no-op. Rows are matched against existing
@@ -39,15 +56,38 @@ data class ImportResult(
  * - doses by schedule + date, the same pair the unique index on intake_logs enforces
  * - incidents by type + start + end
  * A matched medication or schedule is reused as-is (not overwritten), and its source id is
- * remapped onto the existing row so the file's doses still attach to it. */
+ * remapped onto the existing row so the file's doses still attach to it.
+ *
+ * A file with exactly one profile section (the common case — exporting then re-importing your
+ * own backup, or a single-profile export) always merges into [importData]'s given active profile,
+ * ignoring the file's own profile name: re-importing your own data shouldn't require matching
+ * names. A file with more than one section (an "all profiles" export, e.g. migrating to a new
+ * device) instead recreates each profile by name — matching an existing same-named profile if
+ * there is one, creating a new one otherwise — since there's no single active profile that could
+ * sensibly own every section. */
 class ImportRepository(
     private val database: TymedDatabase,
+    private val profileRepository: ProfileRepository,
     private val medicationRepository: MedicationRepository,
     private val scheduleRepository: ScheduleRepository,
     private val alarmScheduler: AlarmScheduler,
 ) {
-    suspend fun importData(data: ImportData): ImportResult {
-        val result = database.withTransaction { merge(data) }
+    suspend fun importData(activeProfileId: Long, data: ImportData): ImportResult {
+        val result = database.withTransaction {
+            val profileIdByName = profileRepository.listProfiles().associate { it.name to it.id }.toMutableMap()
+            var total = ImportResult()
+            for (profileData in data.profiles) {
+                val targetProfileId = if (data.profiles.size == 1) {
+                    activeProfileId
+                } else {
+                    profileIdByName.getOrPut(profileData.profileName) {
+                        profileRepository.createProfile(profileData.profileName, ProfileColors.forIndex(profileIdByName.size))
+                    }
+                }
+                total += merge(targetProfileId, profileData)
+            }
+            total
+        }
         // After the transaction commits, so an alarm is never armed for a schedule that got
         // rolled back. Re-arming is idempotent, so re-arming every enabled schedule (rather than
         // tracking just the new ones) is safe and covers them all.
@@ -57,7 +97,7 @@ class ImportRepository(
         return result
     }
 
-    private suspend fun merge(data: ImportData): ImportResult {
+    private suspend fun merge(profileId: Long, data: ImportProfileData): ImportResult {
         val medicationDao = database.medicationDao()
         val scheduleDao = database.scheduleDao()
         val logDao = database.intakeLogDao()
@@ -66,13 +106,13 @@ class ImportRepository(
 
         val medicationIds = mutableMapOf<Long, Long>()
         for (med in data.medications) {
-            val existing = medicationRepository.findDuplicateMedication(med.name, med.dosage, med.form).exact
+            val existing = medicationRepository.findDuplicateMedication(profileId, med.name, med.dosage, med.form).exact
             medicationIds[med.id] = if (existing != null) {
                 result = result.copy(skipped = result.skipped + 1)
                 existing.id
             } else {
                 result = result.copy(medicationsAdded = result.medicationsAdded + 1)
-                medicationDao.insert(med.copy(id = 0))
+                medicationDao.insert(med.copy(id = 0, profileId = profileId))
             }
         }
 
@@ -121,10 +161,10 @@ class ImportRepository(
         }
 
         for (incident in data.incidents) {
-            if (incidentDao.findMatching(incident.type, incident.startedAt, incident.endedAt) != null) {
+            if (incidentDao.findMatching(profileId, incident.type, incident.startedAt, incident.endedAt) != null) {
                 result = result.copy(skipped = result.skipped + 1)
             } else {
-                incidentDao.insert(incident.copy(id = 0))
+                incidentDao.insert(incident.copy(id = 0, profileId = profileId))
                 result = result.copy(incidentsAdded = result.incidentsAdded + 1)
             }
         }

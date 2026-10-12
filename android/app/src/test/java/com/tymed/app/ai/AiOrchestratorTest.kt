@@ -1,7 +1,10 @@
 package com.tymed.app.ai
 
+import androidx.test.core.app.ApplicationProvider
+import com.tymed.app.data.ActiveProfile
 import com.tymed.app.data.repository.MedicationInput
 import com.tymed.app.data.repository.MedicationRepository
+import com.tymed.app.data.repository.TEST_PROFILE_ID
 import com.tymed.app.data.repository.newInMemoryDatabase
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -37,8 +40,9 @@ class AiOrchestratorTest {
         client = FakeAiClient()
         toolRunner = FakeToolRunner()
         val medicationRepository = MedicationRepository(newInMemoryDatabase().medicationDao())
-        orchestrator = AiOrchestrator(medicationRepository, toolRunner, client)
-        runTest { medicationRepository.createMedication(MedicationInput("Ibuprofen", "200 mg", null, null, null, null)) }
+        val activeProfile = ActiveProfile(ApplicationProvider.getApplicationContext()).apply { switchTo(TEST_PROFILE_ID) }
+        orchestrator = AiOrchestrator(activeProfile, medicationRepository, toolRunner, client)
+        runTest { medicationRepository.createMedication(TEST_PROFILE_ID, MedicationInput("Ibuprofen", "200 mg", null, null, null, null)) }
     }
 
     @Test

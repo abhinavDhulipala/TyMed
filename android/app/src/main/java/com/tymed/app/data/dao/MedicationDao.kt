@@ -17,6 +17,10 @@ interface MedicationDao {
     @Query("SELECT * FROM medications WHERE id = :id")
     suspend fun getById(id: Long): Medication?
 
+    @Query("SELECT * FROM medications WHERE profile_id = :profileId ORDER BY name COLLATE NOCASE")
+    suspend fun getAllForProfile(profileId: Long): List<Medication>
+
+    /** Every medication across every profile, for a full "all profiles" data export. */
     @Query("SELECT * FROM medications ORDER BY name COLLATE NOCASE")
     suspend fun getAll(): List<Medication>
 

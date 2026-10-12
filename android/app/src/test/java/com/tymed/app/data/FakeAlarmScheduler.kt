@@ -8,9 +8,11 @@ class FakeAlarmScheduler : AlarmScheduler {
     val scheduled = mutableListOf<DoseReminderParams>()
     val cancelled = mutableListOf<Long>()
     var stopRingingCalls = 0
+    val stoppedRequestCodes = mutableListOf<Int>()
     val skipped = mutableListOf<ScheduleWithMedication>()
     val rearmed = mutableListOf<List<ScheduleWithMedication>>()
     val followUpMinutes = mutableListOf<Int>()
+    val clearedFollowUpMinutes = mutableListOf<Long>()
 
     override fun scheduleDoseReminders(params: DoseReminderParams) {
         scheduled += params
@@ -20,8 +22,9 @@ class FakeAlarmScheduler : AlarmScheduler {
         cancelled += scheduleId
     }
 
-    override fun stopRinging() {
+    override fun stopRinging(requestCode: Int) {
         stopRingingCalls++
+        stoppedRequestCodes += requestCode
     }
 
     override fun skipTodaysDoseReminder(schedule: ScheduleWithMedication) {
@@ -32,7 +35,11 @@ class FakeAlarmScheduler : AlarmScheduler {
         rearmed += schedules
     }
 
-    override fun setFollowUpMinutes(minutes: Int) {
+    override fun setFollowUpMinutes(profileId: Long, minutes: Int) {
         followUpMinutes += minutes
+    }
+
+    override fun clearFollowUpMinutes(profileId: Long) {
+        clearedFollowUpMinutes += profileId
     }
 }

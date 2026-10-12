@@ -7,6 +7,7 @@ import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,6 +55,12 @@ class AlarmActivitySnoozeTest {
         findButton(root, predicate)
     } catch (e: IllegalStateException) {
         null
+    }
+
+    private fun hasText(root: View, text: String): Boolean = when (root) {
+        is TextView -> root.text.toString().contains(text)
+        is ViewGroup -> (0 until root.childCount).any { hasText(root.getChildAt(it), text) }
+        else -> false
     }
 
     private fun pendingBroadcastExists(requestCode: Int): Boolean =
@@ -112,6 +119,7 @@ class AlarmActivitySnoozeTest {
                 requestCode = snoozeRequestCode,
                 scheduleId = scheduleId,
                 medicationId = 1,
+                profileId = 1,
                 medicationName = "Aspirin",
                 dosage = "81mg",
                 isPrimary = false,
@@ -141,5 +149,64 @@ class AlarmActivitySnoozeTest {
         )
 
         controller.destroy()
+    }
+
+    /** Two profiles' doses can legitimately be due at the same moment on a shared device —
+     * resolving the one currently on screen must never make the other one (still ringing, under
+     * its own notification) unreachable except by digging through the shade. */
+    @Test
+    fun `resolving one ringing alarm chains to another still-ringing one instead of just opening the app`() {
+        val firstScheduleId = 61
+        val secondScheduleId = 62
+
+        RingingAlarmTracker.start(
+            RingingAlarmInfo(
+                requestCode = firstScheduleId,
+                scheduleId = firstScheduleId,
+                medicationId = 1,
+                profileId = 1,
+                medicationName = "Aspirin",
+                dosage = "81mg",
+                ringingSinceMillis = System.currentTimeMillis(),
+            ),
+        )
+        RingingAlarmTracker.start(
+            RingingAlarmInfo(
+                requestCode = secondScheduleId,
+                scheduleId = secondScheduleId,
+                medicationId = 2,
+                profileId = 2,
+                medicationName = "Metformin",
+                dosage = null,
+                ringingSinceMillis = System.currentTimeMillis(),
+            ),
+        )
+
+        val controller = Robolectric.buildActivity(AlarmActivity::class.java, ringIntent(firstScheduleId, firstScheduleId))
+        val activity = controller.create().start().resume().get()
+
+        val snoozeButton = findButton(activity.window.decorView) { it.startsWith("Snooze") }
+        snoozeButton.performClick()
+
+        // Shown in place on this same instance — a startActivity() here would be delivered back
+        // to this singleTop instance and then torn down by its own finish().
+        assertFalse("the screen must stay up to show the second alarm", activity.isFinishing)
+        assertEquals(
+            "nothing should be started — not the app, and not a second copy of this screen",
+            null,
+            shadowOf(activity).nextStartedActivity,
+        )
+        assertEquals(secondScheduleId, activity.intent.getIntExtra(AlarmReceiver.EXTRA_REQUEST_CODE, -1))
+        assertTrue(
+            "the screen should now be showing the second alarm's medication",
+            hasText(activity.window.decorView, "Metformin"),
+        )
+
+        val stillRinging = RingingAlarmTracker.current.value.map { it.requestCode }
+        assertFalse("the resolved alarm should no longer be tracked as ringing", stillRinging.contains(firstScheduleId))
+        assertTrue("the other alarm must still be tracked as ringing", stillRinging.contains(secondScheduleId))
+
+        controller.destroy()
+        RingingAlarmTracker.clear(secondScheduleId)
     }
 }

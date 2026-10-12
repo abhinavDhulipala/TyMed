@@ -37,7 +37,10 @@ class ScheduleRepository(private val dao: ScheduleDao) {
     /** Every enabled schedule across all medications, for re-arming native alarms on app start. */
     suspend fun listAllEnabledSchedulesWithMedication(): List<ScheduleWithMedication> = dao.listAllEnabledWithMedication()
 
-    /** Every schedule regardless of medication or enabled state, for a full data export. */
+    /** Every schedule belonging to [profileId], for a single-profile data export. */
+    suspend fun listSchedulesForProfile(profileId: Long): List<Schedule> = dao.getAllForProfile(profileId)
+
+    /** Every schedule across every profile, for a full "all profiles" data export. */
     suspend fun listAllSchedules(): List<Schedule> = dao.getAll()
 
     suspend fun createSchedule(medicationId: Long, timeOfDay: String, recurrence: RecurrenceInput): Long =

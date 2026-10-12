@@ -28,7 +28,7 @@ class IntakeLogRepositoryTest {
         medications = MedicationRepository(db.medicationDao())
         schedules = ScheduleRepository(db.scheduleDao())
         logs = IntakeLogRepository(db.intakeLogDao(), db.scheduleDao())
-        medicationId = medications.createMedication(MedicationInput("Aspirin", "81mg", null, null, null, null))
+        medicationId = medications.createMedication(TEST_PROFILE_ID, MedicationInput("Aspirin", "81mg", null, null, null, null))
     }
 
     @Test
@@ -36,8 +36,8 @@ class IntakeLogRepositoryTest {
         schedules.createSchedule(medicationId, "08:00", RecurrenceInput(RecurrenceType.DAILY, null, null, null))
 
         val date = "2026-09-20"
-        val first = logs.getDosesForDate(date)
-        val second = logs.getDosesForDate(date)
+        val first = logs.getDosesForDate(TEST_PROFILE_ID, date)
+        val second = logs.getDosesForDate(TEST_PROFILE_ID, date)
 
         assertEquals(1, first.size)
         assertEquals(1, second.size)
@@ -54,7 +54,7 @@ class IntakeLogRepositoryTest {
         )
 
         // 2026-09-20 is a Sunday, not in [Mon, Wed, Fri].
-        val doses = logs.getDosesForDate("2026-09-20")
+        val doses = logs.getDosesForDate(TEST_PROFILE_ID, "2026-09-20")
 
         assertTrue(doses.isEmpty())
     }
@@ -83,19 +83,19 @@ class IntakeLogRepositoryTest {
         // firing both call refresh() moments apart, each doing ensureLogsForDate's check-then-
         // insert concurrently. Without the unique index + IGNORE, this used to create duplicate
         // "pending" rows for the same schedule+date, showing as a duplicated dose on screen.
-        List(20) { async(Dispatchers.Default) { logs.ensureLogsForDate(date) } }.awaitAll()
+        List(20) { async(Dispatchers.Default) { logs.ensureLogsForDate(TEST_PROFILE_ID, date) } }.awaitAll()
 
-        assertEquals(1, logs.getDosesForDate(date).size)
+        assertEquals(1, logs.getDosesForDate(TEST_PROFILE_ID, date).size)
     }
 
     @Test
     fun `getDailyAdherence sums taken and resolved per day`() = runTest {
         schedules.createSchedule(medicationId, "08:00", RecurrenceInput(RecurrenceType.DAILY, null, null, null))
         val date = "2026-09-20"
-        val log = logs.getDosesForDate(date).first()
+        val log = logs.getDosesForDate(TEST_PROFILE_ID, date).first()
         logs.setLogStatus(log.log.id, DoseStatus.TAKEN)
 
-        val adherence = logs.getDailyAdherence(date, date)
+        val adherence = logs.getDailyAdherence(TEST_PROFILE_ID, date, date)
 
         assertEquals(1, adherence[date]?.taken)
         assertEquals(1, adherence[date]?.resolved)

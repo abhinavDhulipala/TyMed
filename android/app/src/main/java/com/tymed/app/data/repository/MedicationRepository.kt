@@ -22,13 +22,17 @@ data class DuplicateCheck(
 )
 
 class MedicationRepository(private val dao: MedicationDao) {
-    suspend fun listMedications(): List<Medication> = dao.getAll()
+    suspend fun listMedications(profileId: Long): List<Medication> = dao.getAllForProfile(profileId)
+
+    /** Every medication across every profile, for a full "all profiles" data export. */
+    suspend fun listAllMedications(): List<Medication> = dao.getAll()
 
     suspend fun getMedication(id: Long): Medication? = dao.getById(id)
 
-    suspend fun createMedication(input: MedicationInput): Long =
+    suspend fun createMedication(profileId: Long, input: MedicationInput): Long =
         dao.insert(
             Medication(
+                profileId = profileId,
                 name = input.name,
                 dosage = input.dosage,
                 form = input.form,
@@ -60,14 +64,16 @@ class MedicationRepository(private val dao: MedicationDao) {
     suspend fun incrementPillCount(medicationId: Long) = dao.incrementPillCount(medicationId)
 
     /** Checks for existing medications that collide with the given name/dosage/form, excluding
-     * [excludeId] (the medication being edited, if any). */
+     * [excludeId] (the medication being edited, if any). Only looks within [profileId] — the
+     * same medication name tracked under two different profiles isn't a duplicate. */
     suspend fun findDuplicateMedication(
+        profileId: Long,
         name: String,
         dosage: String?,
         form: String?,
         excludeId: Long? = null,
     ): DuplicateCheck {
-        val all = dao.getAll()
+        val all = dao.getAllForProfile(profileId)
         val candidates = all.filter { it.id != excludeId && normalize(it.name) == normalize(name) }
         val exact = candidates.find { normalize(it.dosage) == normalize(dosage) && normalize(it.form) == normalize(form) }
         val partial = candidates.filter { it.id != exact?.id }

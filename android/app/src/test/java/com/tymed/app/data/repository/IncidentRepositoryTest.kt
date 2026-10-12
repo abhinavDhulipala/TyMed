@@ -30,7 +30,7 @@ class IncidentRepositoryTest {
 
     @Test
     fun `createIncident then getIncident round-trips every field`() = runTest {
-        val id = repository.createIncident(input(severity = "mild", notes = "Happened in the yard"))
+        val id = repository.createIncident(TEST_PROFILE_ID, input(severity = "mild", notes = "Happened in the yard"))
 
         val saved = repository.getIncident(id)
 
@@ -42,7 +42,7 @@ class IncidentRepositoryTest {
 
     @Test
     fun `updateIncident overwrites the existing row`() = runTest {
-        val id = repository.createIncident(input())
+        val id = repository.createIncident(TEST_PROFILE_ID, input())
 
         repository.updateIncident(id, input(type = "Vomiting", severity = "severe"))
 
@@ -53,7 +53,7 @@ class IncidentRepositoryTest {
 
     @Test
     fun `deleteIncident removes the row`() = runTest {
-        val id = repository.createIncident(input())
+        val id = repository.createIncident(TEST_PROFILE_ID, input())
 
         repository.deleteIncident(id)
 
@@ -62,11 +62,11 @@ class IncidentRepositoryTest {
 
     @Test
     fun `recentIncidents filters by type and orders most recent first`() = runTest {
-        repository.createIncident(input(type = "Seizure", startedAt = Instant.now().minusSeconds(200).toString()))
-        repository.createIncident(input(type = "Vomiting", startedAt = Instant.now().minusSeconds(100).toString()))
-        val newestSeizure = repository.createIncident(input(type = "Seizure", startedAt = Instant.now().toString()))
+        repository.createIncident(TEST_PROFILE_ID, input(type = "Seizure", startedAt = Instant.now().minusSeconds(200).toString()))
+        repository.createIncident(TEST_PROFILE_ID, input(type = "Vomiting", startedAt = Instant.now().minusSeconds(100).toString()))
+        val newestSeizure = repository.createIncident(TEST_PROFILE_ID, input(type = "Seizure", startedAt = Instant.now().toString()))
 
-        val seizures = repository.recentIncidents(type = "Seizure")
+        val seizures = repository.recentIncidents(TEST_PROFILE_ID, type = "Seizure")
 
         assertEquals(2, seizures.size)
         assertEquals(newestSeizure, seizures.first().id)
@@ -75,6 +75,7 @@ class IncidentRepositoryTest {
     @Test
     fun `durationSeconds measures from startedAt to endedAt`() = runTest {
         val id = repository.createIncident(
+            TEST_PROFILE_ID,
             input(startedAt = Instant.parse("2026-01-01T00:00:00Z").toString(), endedAt = Instant.parse("2026-01-01T00:01:30Z").toString()),
         )
 

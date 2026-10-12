@@ -1,6 +1,7 @@
 package com.tymed.app
 
 import android.app.Application
+import com.tymed.app.alarm.migrateLegacyFollowUpMinutes
 import com.tymed.app.observability.initSentry
 
 class TymedApplication : Application() {
@@ -10,5 +11,6 @@ class TymedApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         initSentry(this)
+        migrateLegacyFollowUpMinutes(this)
     }
 }

@@ -1,5 +1,6 @@
 package com.tymed.app.ai
 
+import com.tymed.app.data.ActiveProfile
 import com.tymed.app.data.repository.MedicationRepository
 import org.json.JSONObject
 
@@ -84,6 +85,7 @@ private fun toolCallText(name: String, arguments: Map<String, Any?>): String =
  * doesn't reliably set the flag itself — and for health data it shouldn't be the one deciding.
  */
 class AiOrchestrator(
+    private val activeProfile: ActiveProfile,
     private val medicationRepository: MedicationRepository,
     private val tools: ToolRunner,
     private val client: AiClient,
@@ -112,7 +114,7 @@ class AiOrchestrator(
             // An error or an unexpected result — let the model explain it.
         }
 
-        val medications = medicationRepository.listMedications().map { TrackedMedication(it.name, it.dosage) }
+        val medications = medicationRepository.listMedications(activeProfile.current).map { TrackedMedication(it.name, it.dosage) }
         var usedCorrectiveRetry = false
         var usedClaimRetry = false
         var lastToolCallSignature: String? = null

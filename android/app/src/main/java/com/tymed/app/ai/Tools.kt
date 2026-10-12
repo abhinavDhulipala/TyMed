@@ -1,5 +1,6 @@
 package com.tymed.app.ai
 
+import com.tymed.app.data.ActiveProfile
 import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.DoseReminderParams
 import com.tymed.app.data.entity.DoseStatus
@@ -139,6 +140,7 @@ interface ToolRunner {
 }
 
 class Tools(
+    private val activeProfile: ActiveProfile,
     private val medicationRepository: MedicationRepository,
     private val scheduleRepository: ScheduleRepository,
     private val intakeLogRepository: IntakeLogRepository,
@@ -147,6 +149,7 @@ class Tools(
     private val doseActions: DoseActions,
     private val incidentRepository: IncidentRepository,
 ) : ToolRunner {
+    private val profileId: Long get() = activeProfile.current
 
     /** Mirrors app/(tabs)/medications/new.tsx's submit flow: one createMedication, then one
      * createSchedule + scheduleDoseReminders per requested time, all on a fixed daily recurrence
@@ -167,7 +170,7 @@ class Tools(
         val endDate = durationDays?.let { endDateForDuration(it) }
 
         val dosageTrimmed = dosage?.trim()?.takeIf { it.isNotEmpty() }
-        val duplicate = medicationRepository.findDuplicateMedication(trimmedName, dosageTrimmed, null)
+        val duplicate = medicationRepository.findDuplicateMedication(profileId, trimmedName, dosageTrimmed, null)
 
         if (duplicate.exact != null) {
             if (times.isNullOrEmpty() && durationDays == null) {
@@ -188,6 +191,7 @@ class Tools(
         }
 
         val medicationId = medicationRepository.createMedication(
+            profileId,
             MedicationInput(trimmedName, dosageTrimmed, null, null, null, null),
         )
         for (time in resolvedTimes) {
@@ -197,6 +201,7 @@ class Tools(
                 DoseReminderParams(
                     scheduleId = scheduleId,
                     medicationId = medicationId,
+                    profileId = profileId,
                     medicationName = trimmedName,
                     dosage = dosageTrimmed,
                     timeOfDay = time,
@@ -228,7 +233,7 @@ class Tools(
             "update_medication_schedule needs times and/or durationDays to change"
         }
 
-        val all = medicationRepository.listMedications()
+        val all = medicationRepository.listMedications(profileId)
         val sameName = all.filter { it.name.trim().equals(name, ignoreCase = true) }
         if (sameName.isEmpty()) {
             return UpdateScheduleResult.NotFound(name, all.map { it.name })
@@ -261,6 +266,7 @@ class Tools(
 
         scheduleSyncRepository.syncMedicationSchedules(
             medicationId = medication.id,
+            profileId = profileId,
             medicationName = medication.name,
             medicationDosage = medication.dosage,
             times = after.times,
@@ -272,7 +278,7 @@ class Tools(
     }
 
     suspend fun getTodaysDoses(): List<TodaysDose> =
-        intakeLogRepository.getDosesForDate(todayDateString()).map {
+        intakeLogRepository.getDosesForDate(profileId, todayDateString()).map {
             TodaysDose(it.medicationName, it.dosage, it.log.scheduledTime, it.log.status)
         }
 
@@ -284,7 +290,7 @@ class Tools(
         val name = medicationName.trim()
         require(name.isNotEmpty()) { "mark_dose_taken requires a medicationName" }
 
-        val doses = intakeLogRepository.getDosesForDate(todayDateString())
+        val doses = intakeLogRepository.getDosesForDate(profileId, todayDateString())
         val pending = doses.filter { it.log.status == DoseStatus.PENDING }
 
         val normalized = name.lowercase()
@@ -343,6 +349,7 @@ class Tools(
         }
 
         incidentRepository.createIncident(
+            profileId,
             IncidentInput(
                 type = summary.type,
                 startedAt = summary.startedAt,
@@ -355,7 +362,7 @@ class Tools(
     }
 
     suspend fun getRecentIncidents(type: String?, limit: Int?): List<IncidentSummary> =
-        incidentRepository.recentIncidents(type?.trim()?.takeIf { it.isNotEmpty() }, limit ?: 10)
+        incidentRepository.recentIncidents(profileId, type?.trim()?.takeIf { it.isNotEmpty() }, limit ?: 10)
             .map { it.toSummary() }
 
     /** Runs a tool call and always resolves — a bad tool name or invalid arguments becomes

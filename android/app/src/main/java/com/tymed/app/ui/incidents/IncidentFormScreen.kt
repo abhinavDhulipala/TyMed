@@ -19,9 +19,10 @@ fun IncidentFormScreen(
     modifier: Modifier = Modifier,
 ) {
     val container = rememberAppContainer()
+    val profileId = container.activeProfile.current
     val viewModel: IncidentFormViewModel = viewModel(
         key = "incident-form-$incidentId",
-        factory = TymedViewModelFactory(container) { IncidentFormViewModel(it, incidentId) },
+        factory = TymedViewModelFactory(container) { IncidentFormViewModel(it, profileId, incidentId) },
     )
     val uiState by viewModel.uiState.collectAsState()
 

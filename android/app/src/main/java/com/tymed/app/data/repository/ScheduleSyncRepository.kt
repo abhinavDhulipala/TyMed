@@ -16,6 +16,7 @@ class ScheduleSyncRepository(
 ) {
     suspend fun syncMedicationSchedules(
         medicationId: Long,
+        profileId: Long,
         medicationName: String,
         medicationDosage: String?,
         times: List<String>,
@@ -71,6 +72,7 @@ class ScheduleSyncRepository(
                 DoseReminderParams(
                     scheduleId = scheduleId,
                     medicationId = medicationId,
+                    profileId = profileId,
                     medicationName = medicationName,
                     dosage = medicationDosage,
                     timeOfDay = time,

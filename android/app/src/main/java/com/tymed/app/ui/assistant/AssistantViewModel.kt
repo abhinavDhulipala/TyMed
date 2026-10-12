@@ -30,7 +30,7 @@ class AssistantViewModel(private val container: AppContainer) : ViewModel() {
 
     fun checkAndPrepare() {
         viewModelScope.launch {
-            val enabled = container.settingsRepository.getAiAssistantEnabled()
+            val enabled = container.settingsRepository.getAiAssistantEnabled(container.activeProfile.current)
             if (!enabled) {
                 _uiState.update { it.copy(phase = AssistantPhase.DISABLED) }
                 return@launch

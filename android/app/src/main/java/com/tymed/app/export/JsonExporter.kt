@@ -5,28 +5,35 @@ import com.tymed.app.data.entity.IntakeLog
 import com.tymed.app.data.entity.Medication
 import com.tymed.app.data.entity.Schedule
 import com.tymed.app.data.repository.ExportSnapshot
+import com.tymed.app.data.repository.ProfileExport
 import com.tymed.app.data.repository.decodeDaysOfWeek
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Renders an [ExportSnapshot] as a single nested JSON document — the most complete and most
- * machine-readable of the three export formats, at the cost of needing a text editor to read. */
+/** Renders an [ExportSnapshot] as a single nested JSON document, one object per profile — the
+ * most complete and most machine-readable of the three export formats, at the cost of needing a
+ * text editor to read. */
 object JsonExporter {
     fun render(snapshot: ExportSnapshot): String {
         val root = JSONObject()
-        root.put("medications", snapshot.medications.toJsonArray(::medicationToJson))
-        root.put("schedules", snapshot.schedules.toJsonArray(::scheduleToJson))
-        root.put("intakeLogs", snapshot.intakeLogs.toJsonArray(::intakeLogToJson))
-        root.put("incidents", snapshot.incidents.toJsonArray(::incidentToJson))
-        root.put(
+        root.put("profiles", snapshot.profiles.toJsonArray(::profileToJson))
+        return root.toString(2)
+    }
+
+    private fun profileToJson(profile: ProfileExport) = JSONObject().apply {
+        put("profileName", profile.profileName)
+        put("medications", profile.medications.toJsonArray(::medicationToJson))
+        put("schedules", profile.schedules.toJsonArray(::scheduleToJson))
+        put("intakeLogs", profile.intakeLogs.toJsonArray(::intakeLogToJson))
+        put("incidents", profile.incidents.toJsonArray(::incidentToJson))
+        put(
             "settings",
             JSONObject().apply {
-                put("followUpMinutes", snapshot.settings.followUpMinutes)
-                put("use24HourFormat", snapshot.settings.use24HourFormat)
-                put("aiAssistantEnabled", snapshot.settings.aiAssistantEnabled)
+                put("followUpMinutes", profile.settings.followUpMinutes)
+                put("use24HourFormat", profile.settings.use24HourFormat)
+                put("aiAssistantEnabled", profile.settings.aiAssistantEnabled)
             },
         )
-        return root.toString(2)
     }
 
     private fun medicationToJson(medication: Medication) = JSONObject().apply {

@@ -2,6 +2,8 @@ package com.tymed.app.data.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.time.Duration
 import java.time.Instant
@@ -12,10 +14,23 @@ import java.time.Instant
  * still working great out of the box for seizure logging. Always logged after the fact (both
  * [startedAt] and [endedAt] required) rather than with a live "still ongoing" timer — someone
  * logging a seizure is almost always doing so once it's over, not mid-event. */
-@Entity(tableName = "incidents")
+@Entity(
+    tableName = "incidents",
+    foreignKeys = [
+        ForeignKey(
+            entity = Profile::class,
+            parentColumns = ["id"],
+            childColumns = ["profile_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["profile_id"], name = "idx_incidents_profile")],
+)
 data class Incident(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    @ColumnInfo(name = "profile_id")
+    val profileId: Long,
     @ColumnInfo(name = "type")
     val type: String,
     @ColumnInfo(name = "started_at")
