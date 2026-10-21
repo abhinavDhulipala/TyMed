@@ -2,6 +2,7 @@ package com.tymed.app.ai
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 // End dates are far in the future on purpose: formatFullDateLabel renders the current date as
@@ -58,6 +59,15 @@ class MessagesTest {
     }
 
     @Test
+    fun `confirmationQuestion reads back an incident with its notes`() {
+        val summary = IncidentSummary("seizure", "2099-09-30T12:00:00Z", "2099-09-30T12:01:30Z", 90, "mild", "In the yard")
+        val question = confirmationQuestion(ToolResult.LogIncidentOutcome(LogIncidentResult.NeedsConfirmation(summary)))!!
+        assertTrue(question, question.startsWith("Log a mild seizure at "))
+        assertTrue(question, question.contains(" on 2099-09-30, lasting 1m 30s?"))
+        assertTrue(question, question.endsWith(" Notes: \"In the yard\"."))
+    }
+
+    @Test
     fun `confirmationQuestion is null for a result shape it does not recognize`() {
         assertNull(confirmationQuestion(ToolResult.Error("boom")))
         assertNull(confirmationQuestion(ToolResult.UpdateScheduleOutcome(UpdateScheduleResult.NoChange("Aspirin"))))
@@ -84,6 +94,14 @@ class MessagesTest {
     fun `doneMessage reports a marked-taken dose`() {
         val result = ToolResult.MarkDoseTakenOutcome(MarkDoseTakenResult.MarkedTaken("Aspirin", "08:00"))
         assertEquals("Done — marked your 8:00 AM Aspirin dose as taken.", doneMessage(result))
+    }
+
+    @Test
+    fun `doneMessage reports a logged incident`() {
+        val summary = IncidentSummary("seizure", "2099-09-30T12:00:00Z", "2099-09-30T12:00:00Z", 0, null, null)
+        val done = doneMessage(ToolResult.LogIncidentOutcome(LogIncidentResult.Logged(summary)))!!
+        assertTrue(done, done.startsWith("Done — logged a seizure at "))
+        assertTrue(done, done.endsWith(" on 2099-09-30."))
     }
 
     @Test
