@@ -1,5 +1,6 @@
 package com.tymed.app.ui.assistant
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tymed.app.AppContainer
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 enum class AssistantPhase { CHECKING, DISABLED, PREPARING, PREPARE_FAILED, READY }
 
@@ -60,15 +62,30 @@ class AssistantViewModel(private val container: AppContainer) : ViewModel() {
         }
 
         viewModelScope.launch {
-            val result = container.aiOrchestrator.runTurn(text, history, pending)
-            history = result.history
-            pending = result.pending
+            // runTurn handles model failures itself; this is the backstop for anything else (a
+            // tool's database write, say) so one bad turn can't crash the app or leave input locked.
+            val reply = try {
+                val result = container.aiOrchestrator.runTurn(text, history, pending)
+                history = result.history
+                pending = result.pending
+                result.reply
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Assistant turn failed", e)
+                ERROR_REPLY
+            }
             _uiState.update {
                 it.copy(
-                    messages = it.messages + ChatMessage(fromUser = false, text = result.reply),
+                    messages = it.messages + ChatMessage(fromUser = false, text = reply),
                     sending = false,
                 )
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "AssistantViewModel"
+        const val ERROR_REPLY = "Sorry, something went wrong. Please try again."
     }
 }
