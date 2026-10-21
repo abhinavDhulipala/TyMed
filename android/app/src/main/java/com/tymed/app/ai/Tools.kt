@@ -103,8 +103,7 @@ val TOOL_DESCRIPTIONS: Map<String, String> = linkedMapOf(
     "add_medication" to (
         "add_medication(name: string, dosage?: string, times?: string[] [\"HH:MM\" 24h, default [\"08:00\"]], " +
             "durationDays?: number) — adds a NEW medication with daily reminders; \"twice a day\" means two times, " +
-            "\"for 7 days\" means durationDays:7. If the result status is \"exists\", say it's already tracked. If the " +
-            "result has existing:true, it was already tracked and this is a schedule change: describe the before/after."
+            "\"for 7 days\" means durationDays:7. If the result status is \"exists\", say it's already tracked."
         ),
     "update_medication_schedule" to (
         "update_medication_schedule(medicationName: string, dosage?: string, times?: string[] [\"HH:MM\" 24h, the " +
@@ -123,9 +122,7 @@ val TOOL_DESCRIPTIONS: Map<String, String> = linkedMapOf(
             "now], durationSeconds?: number [how long it lasted, in seconds; omit if the user didn't say — logged " +
             "as an instant event], severity?: string [\"mild\"|\"moderate\"|\"severe\"], notes?: string) — logs a " +
             "notable event that already happened, like a seizure, not just medications. Always after the fact — " +
-            "there's no \"still happening\" state. If the user doesn't say what kind of event, ask. Always returns " +
-            "\"needs_confirmation\" first: read the summary back to the user, and only re-call with confirmed:true " +
-            "once they've agreed it's right."
+            "there's no \"still happening\" state. If the user doesn't say what kind of event, ask."
         ),
     "get_recent_incidents" to (
         "get_recent_incidents(type?: string, limit?: number [default 10]) — returns recently logged incidents " +
@@ -300,9 +297,15 @@ class Tools(
             return MarkDoseTakenResult.NotFound(name, doses.map { it.medicationName }.distinct())
         }
 
-        if (matches.size > 1 && scheduledTime != null) {
-            val narrowed = matches.filter { it.log.scheduledTime == scheduledTime }
-            if (narrowed.size == 1) matches = narrowed
+        // A given time is binding, never a hint: a confirmed "yes" carries the exact time it was
+        // asked about, and if that dose was marked from its notification in the meantime this
+        // must not fall through to whichever dose of the same medication is still pending.
+        if (scheduledTime != null) {
+            val atTime = matches.filter { it.log.scheduledTime == normalizeTime(scheduledTime) }
+            if (atTime.isEmpty()) {
+                return MarkDoseTakenResult.Ambiguous(name, matches.map { it.log.scheduledTime })
+            }
+            matches = atTime
         }
 
         if (matches.size > 1) {
@@ -320,7 +323,9 @@ class Tools(
 
     /** Takes offsets from now ([minutesAgo], [durationSeconds]) rather than asking the model for
      * absolute timestamps, for the same reason [addMedication] takes durationDays — small
-     * on-device models are unreliable at date/time arithmetic. */
+     * on-device models are unreliable at date/time arithmetic. [startedAt] is never the model's:
+     * AiOrchestrator pins it from the needs_confirmation summary so the confirmed write uses the
+     * exact start time the user agreed to; it overrides [minutesAgo] when set. */
     suspend fun logIncident(
         type: String,
         minutesAgo: Int?,
@@ -328,16 +333,17 @@ class Tools(
         severity: String?,
         notes: String?,
         confirmed: Boolean,
+        startedAt: Instant? = null,
     ): LogIncidentResult {
         val trimmedType = type.trim()
         require(trimmedType.isNotEmpty()) { "log_incident requires a non-empty type" }
 
         val resolvedDurationSeconds = (durationSeconds ?: 0).toLong()
-        val startedAt = Instant.now().minusSeconds((minutesAgo ?: 0).toLong() * 60)
-        val endedAt = startedAt.plusSeconds(resolvedDurationSeconds)
+        val start = startedAt ?: Instant.now().minusSeconds((minutesAgo ?: 0).toLong() * 60)
+        val endedAt = start.plusSeconds(resolvedDurationSeconds)
         val summary = IncidentSummary(
             type = trimmedType,
-            startedAt = startedAt.toString(),
+            startedAt = start.toString(),
             endedAt = endedAt.toString(),
             durationSeconds = resolvedDurationSeconds,
             severity = severity?.trim()?.takeIf { it.isNotEmpty() },
@@ -405,6 +411,7 @@ class Tools(
                         severity = args["severity"] as? String,
                         notes = args["notes"] as? String,
                         confirmed = args["confirmed"] == true,
+                        startedAt = (args["startedAt"] as? String)?.let(Instant::parse),
                     ),
                 )
                 "get_recent_incidents" -> ToolResult.RecentIncidentsOutcome(
@@ -418,6 +425,9 @@ class Tools(
         } catch (error: Exception) {
             ToolResult.Error(error.message ?: "Tool call failed")
         }
+
+    // "8:00" -> "08:00", the stored HH:MM shape; anything else is compared as given.
+    private fun normalizeTime(time: String): String = if (Regex("^\\d:\\d\\d$").matches(time)) "0$time" else time
 
     private fun stringList(value: Any?): List<String>? = (value as? List<*>)?.filterIsInstance<String>()
 
