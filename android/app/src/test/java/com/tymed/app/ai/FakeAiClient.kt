@@ -1,7 +1,8 @@
 package com.tymed.app.ai
 
 class FakeAiClient : AiClient {
-    private val queue = ArrayDeque<String>()
+    // A null entry means "fail this call", the way a safety-filtered Gemini Nano request does.
+    private val queue = ArrayDeque<String?>()
     private var default: String? = null
     val prompts = mutableListOf<String>()
     val callCount: Int get() = prompts.size
@@ -10,13 +11,20 @@ class FakeAiClient : AiClient {
         queue.addLast(response)
     }
 
+    fun willFailOnce() {
+        queue.addLast(null)
+    }
+
     fun willAlwaysReturn(response: String) {
         default = response
     }
 
     override suspend fun generate(prompt: String): String {
         prompts += prompt
-        return queue.removeFirstOrNull() ?: default ?: error("FakeAiClient: no scripted response left")
+        if (queue.isNotEmpty()) {
+            return queue.removeFirst() ?: throw AiGenerationException(4, RuntimeException("blocked"))
+        }
+        return default ?: error("FakeAiClient: no scripted response left")
     }
 }
 

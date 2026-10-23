@@ -221,6 +221,39 @@ class AiOrchestratorTest {
     }
 
     @Test
+    fun `replies with an apology instead of throwing when generation fails`() = runTest {
+        client.willFailOnce()
+
+        val result = orchestrator.runTurn("something the safety filter blocks", emptyList(), null)
+
+        assertTrue(result.reply.startsWith("Sorry, I couldn't respond to that"))
+    }
+
+    @Test
+    fun `drops a failed exchange from history so the next turn is not blocked by it`() = runTest {
+        val earlier = listOf(HistoryEntry(HistoryRole.USER, "hi"), HistoryEntry(HistoryRole.ASSISTANT, "Hello!"))
+        val pending = PendingAction("add_medication", addArgs)
+        client.willFailOnce()
+
+        val result = orchestrator.runTurn("something the safety filter blocks", earlier, pending)
+
+        assertEquals(earlier, result.history)
+        assertEquals(pending, result.pending)
+    }
+
+    @Test
+    fun `keeps history when generation fails after a write was saved this turn`() = runTest {
+        client.willReturnOnce(toolCall("add_medication", addArgs))
+        toolRunner.willReturnOnce(addDone)
+        client.willFailOnce()
+
+        val result = orchestrator.runTurn("add amoxicillin 500 mg at 8am and 8pm for 7 days", emptyList(), null)
+
+        assertTrue(result.reply.startsWith("Sorry, I couldn't respond to that"))
+        assertTrue(result.history.any { it.role == HistoryRole.TOOL && it.content.contains("\"saved\":true") })
+    }
+
+    @Test
     fun `isAffirmative recognizes clear yes variants`() {
         for (text in listOf("Yes", "yes.", "Yep", "ok", "Sounds good!", "that's right", "go ahead")) {
             assertTrue("expected '$text' to be affirmative", isAffirmative(text))

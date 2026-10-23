@@ -7,6 +7,7 @@ import org.json.JSONObject
 private const val MAX_ITERATIONS = 4
 private const val FALLBACK_REPLY = "I didn't catch that — could you try rephrasing?"
 private const val CANCELLED_REPLY = "Okay, I won't make that change."
+private const val GENERATION_FAILED_REPLY = "Sorry, I couldn't respond to that. Could you try asking another way?"
 private const val UNBACKED_CLAIM_CORRECTION =
     "You have NOT changed anything: no tool result in this turn says saved:true. Call the tool that does what the " +
         "user asked, or tell them you could not do it."
@@ -122,7 +123,18 @@ class AiOrchestrator(
 
         repeat(MAX_ITERATIONS) {
             val prompt = buildPrompt(workingHistory, medications)
-            val raw = client.generate(prompt)
+            val raw = try {
+                client.generate(prompt)
+            } catch (e: AiGenerationException) {
+                // Unless something was saved this turn, drop the exchange entirely: a message the
+                // safety filter blocked would otherwise be resent in every later prompt and get
+                // the rest of the conversation blocked too.
+                return if (savedThisTurn) {
+                    RunTurnResult(GENERATION_FAILED_REPLY, workingHistory, nextPending)
+                } else {
+                    RunTurnResult(GENERATION_FAILED_REPLY, history, pending)
+                }
+            }
             when (val turn = parseTurn(raw)) {
                 is ParsedTurn.Reply -> {
                     if (!savedThisTurn && WRITE_CLAIM.containsMatchIn(turn.text)) {

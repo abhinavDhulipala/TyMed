@@ -12,8 +12,15 @@ import kotlinx.coroutines.flow.first
 /** Seam between [AiOrchestrator] and the actual model backend, so tests can substitute a fake
  * without touching real ML Kit / AICore classes. */
 interface AiClient {
+    /** @throws AiGenerationException when the backend refuses or fails to produce a response. */
     suspend fun generate(prompt: String): String
 }
+
+/** The model backend couldn't produce a response — e.g. Gemini Nano's safety filter blocked the
+ * prompt or its output, AICore was busy, or the request was too large. [errorCode] is the
+ * backend's own code, kept for logging. */
+class AiGenerationException(val errorCode: Int, cause: Throwable) :
+    Exception("Model generation failed (errorCode=$errorCode)", cause)
 
 /**
  * Thin wrapper around ML Kit's GenAI Prompt API (com.google.mlkit.genai.prompt), which runs
@@ -71,7 +78,13 @@ class GeminiNanoClient : AiClient {
 
     override suspend fun generate(prompt: String): String {
         val instance = model?.takeIf { ready } ?: error("GeminiNanoClient.generate called before a successful prepare()")
-        return instance.generateContent(prompt).candidates.firstOrNull()?.text ?: ""
+        return try {
+            instance.generateContent(prompt).candidates.firstOrNull()?.text ?: ""
+        } catch (e: GenAiException) {
+            // A safety-filtered prompt or response can surface as an exception rather than empty text.
+            Log.w(TAG, "Gemini Nano generate failed (errorCode=${e.errorCode})", e)
+            throw AiGenerationException(e.errorCode, e)
+        }
     }
 
     private companion object {
