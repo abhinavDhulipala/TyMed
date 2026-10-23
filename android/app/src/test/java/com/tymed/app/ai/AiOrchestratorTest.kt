@@ -55,14 +55,14 @@ class AiOrchestratorTest {
         assertEquals(1, client.callCount)
         assertTrue(result.reply.startsWith("Add Amoxicillin 500 mg at 8:00 AM and 8:00 PM every day through"))
         assertTrue(result.reply.endsWith("?"))
-        assertEquals(PendingAction("add_medication", addArgs), result.pending)
+        assertEquals(PendingAction("add_medication", addArgs, TEST_PROFILE_ID), result.pending)
     }
 
     @Test
     fun `applies the pending call with confirmed true on a yes without calling the model`() = runTest {
         toolRunner.willReturnOnce(addDone)
 
-        val result = orchestrator.runTurn("Yes", emptyList(), PendingAction("add_medication", addArgs))
+        val result = orchestrator.runTurn("Yes", emptyList(), PendingAction("add_medication", addArgs, TEST_PROFILE_ID))
 
         assertEquals(1, toolRunner.calls.size)
         assertEquals("add_medication" to (addArgs + ("confirmed" to true)), toolRunner.calls.single())
@@ -76,7 +76,7 @@ class AiOrchestratorTest {
         toolRunner.willReturnOnce(ToolResult.Error("add_medication requires a non-empty name"))
         client.willReturnOnce(reply("Sorry, that medication needs a name."))
 
-        val result = orchestrator.runTurn("yes", emptyList(), PendingAction("add_medication", addArgs))
+        val result = orchestrator.runTurn("yes", emptyList(), PendingAction("add_medication", addArgs, TEST_PROFILE_ID))
 
         assertEquals("Sorry, that medication needs a name.", result.reply)
     }
@@ -139,7 +139,7 @@ class AiOrchestratorTest {
 
     @Test
     fun `drops the pending call on a no without calling the model or any tool`() = runTest {
-        val result = orchestrator.runTurn("no thanks", emptyList(), PendingAction("add_medication", addArgs))
+        val result = orchestrator.runTurn("no thanks", emptyList(), PendingAction("add_medication", addArgs, TEST_PROFILE_ID))
 
         assertNull(result.pending)
         assertTrue(result.reply.contains("won't"))
@@ -151,7 +151,7 @@ class AiOrchestratorTest {
     fun `hands a qualified answer back to the model and forgets the stale pending call`() = runTest {
         client.willReturnOnce(reply("What time instead?"))
 
-        val result = orchestrator.runTurn("yes but make it 9pm", emptyList(), PendingAction("add_medication", addArgs))
+        val result = orchestrator.runTurn("yes but make it 9pm", emptyList(), PendingAction("add_medication", addArgs, TEST_PROFILE_ID))
 
         assertEquals(0, toolRunner.calls.size)
         assertNull(result.pending)
@@ -232,7 +232,7 @@ class AiOrchestratorTest {
     @Test
     fun `drops a failed exchange from history so the next turn is not blocked by it`() = runTest {
         val earlier = listOf(HistoryEntry(HistoryRole.USER, "hi"), HistoryEntry(HistoryRole.ASSISTANT, "Hello!"))
-        val pending = PendingAction("add_medication", addArgs)
+        val pending = PendingAction("add_medication", addArgs, TEST_PROFILE_ID)
         client.willFailOnce()
 
         val result = orchestrator.runTurn("something the safety filter blocks", earlier, pending)
@@ -251,6 +251,68 @@ class AiOrchestratorTest {
 
         assertTrue(result.reply.startsWith("Sorry, I couldn't respond to that"))
         assertTrue(result.history.any { it.role == HistoryRole.TOOL && it.content.contains("\"saved\":true") })
+    }
+
+    @Test
+    fun `pins the asked-about dose time so a later yes can't mark a different dose`() = runTest {
+        client.willReturnOnce(toolCall("mark_dose_taken", mapOf("medicationName" to "Aspirin")))
+        toolRunner.willReturnOnce(ToolResult.MarkDoseTakenOutcome(MarkDoseTakenResult.NeedsConfirmation("Aspirin", "08:00")))
+
+        val result = orchestrator.runTurn("I took my aspirin", emptyList(), null)
+
+        assertEquals(
+            PendingAction("mark_dose_taken", mapOf("medicationName" to "Aspirin", "scheduledTime" to "08:00"), TEST_PROFILE_ID),
+            result.pending,
+        )
+    }
+
+    @Test
+    fun `asks a templated question for log_incident and pins its start time`() = runTest {
+        val summary = IncidentSummary("seizure", "2099-09-30T12:00:00Z", "2099-09-30T12:01:30Z", 90, "mild", null)
+        client.willReturnOnce(toolCall("log_incident", mapOf("type" to "seizure", "minutesAgo" to 5, "durationSeconds" to 90, "severity" to "mild")))
+        toolRunner.willReturnOnce(ToolResult.LogIncidentOutcome(LogIncidentResult.NeedsConfirmation(summary)))
+
+        val result = orchestrator.runTurn("log a mild seizure 5 minutes ago, lasted 90 seconds", emptyList(), null)
+
+        assertTrue(result.reply.startsWith("Log a mild seizure at "))
+        assertTrue(result.reply.endsWith(", lasting 1m 30s?"))
+        assertEquals(
+            mapOf("type" to "seizure", "durationSeconds" to 90, "severity" to "mild", "startedAt" to "2099-09-30T12:00:00Z"),
+            result.pending?.arguments,
+        )
+    }
+
+    @Test
+    fun `logs a confirmed incident and reports it as done`() = runTest {
+        val summary = IncidentSummary("seizure", "2099-09-30T12:00:00Z", "2099-09-30T12:00:00Z", 0, null, null)
+        toolRunner.willReturnOnce(ToolResult.LogIncidentOutcome(LogIncidentResult.Logged(summary)))
+
+        val result = orchestrator.runTurn("yes", emptyList(), PendingAction("log_incident", mapOf("type" to "seizure"), TEST_PROFILE_ID))
+
+        assertEquals(0, client.callCount)
+        assertTrue(result.reply.startsWith("Done — logged a seizure at "))
+        assertNull(result.pending)
+    }
+
+    @Test
+    fun `strips app-only arguments the model tries to set itself`() = runTest {
+        client.willReturnOnce(toolCall("log_incident", mapOf("type" to "seizure", "startedAt" to "2020-01-01T00:00:00Z")))
+        toolRunner.willReturnOnce(ToolResult.Error("stop here"))
+        client.willReturnOnce(reply("Something went wrong."))
+
+        orchestrator.runTurn("log a seizure", emptyList(), null)
+
+        assertEquals(mapOf("type" to "seizure"), toolRunner.calls.single().second)
+    }
+
+    @Test
+    fun `ignores a pending call from a different profile`() = runTest {
+        client.willReturnOnce(reply("Yes to what?"))
+
+        val result = orchestrator.runTurn("yes", emptyList(), PendingAction("add_medication", addArgs, TEST_PROFILE_ID + 1))
+
+        assertEquals(0, toolRunner.calls.size)
+        assertEquals("Yes to what?", result.reply)
     }
 
     @Test

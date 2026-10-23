@@ -123,6 +123,27 @@ class ToolsTest {
     }
 
     @Test
+    fun `mark_dose_taken never falls through from the given time to another pending dose`() = runTest {
+        tools.addMedication("Aspirin", null, listOf("08:00", "20:00"), null, confirmed = true)
+        tools.markDoseTaken("Aspirin", "08:00", confirmed = true)
+
+        val result = tools.markDoseTaken("Aspirin", "08:00", confirmed = true)
+
+        assertTrue(result is MarkDoseTakenResult.Ambiguous)
+        val evening = logs.getDosesForDate(TEST_PROFILE_ID, todayDateString()).single { it.log.scheduledTime == "20:00" }
+        assertEquals(DoseStatus.PENDING, evening.log.status)
+    }
+
+    @Test
+    fun `mark_dose_taken accepts an unpadded hour`() = runTest {
+        tools.addMedication("Aspirin", null, listOf("08:00", "20:00"), null, confirmed = true)
+
+        val result = tools.markDoseTaken("Aspirin", "8:00", confirmed = false)
+
+        assertEquals(MarkDoseTakenResult.NeedsConfirmation("Aspirin", "08:00"), result)
+    }
+
+    @Test
     fun `mark_dose_taken reports not_found when nothing pending matches`() = runTest {
         val result = tools.markDoseTaken("Nonexistent", null, confirmed = true)
         assertTrue(result is MarkDoseTakenResult.NotFound)
@@ -146,6 +167,17 @@ class ToolsTest {
         assertEquals("mild", saved.severity)
         assertEquals("In the yard", saved.notes)
         assertEquals(45L, saved.durationSeconds())
+    }
+
+    @Test
+    fun `log_incident uses a pinned startedAt over minutesAgo`() = runTest {
+        val result = tools.runTool(
+            "log_incident",
+            mapOf("type" to "Seizure", "minutesAgo" to 5, "startedAt" to "2026-01-01T10:00:00Z", "confirmed" to true),
+        )
+
+        assertTrue(result is ToolResult.LogIncidentOutcome)
+        assertEquals("2026-01-01T10:00:00Z", incidents.listIncidents(TEST_PROFILE_ID).single().startedAt)
     }
 
     @Test
