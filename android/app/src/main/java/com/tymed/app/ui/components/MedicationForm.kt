@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,6 +31,7 @@ import com.tymed.app.ui.medications.ALL_DAYS
 import com.tymed.app.ui.medications.MedicationFormValues
 import com.tymed.app.ui.theme.TymedColors
 import com.tymed.app.ui.theme.TymedSpacing
+import java.util.Locale
 
 private val RECURRENCE_OPTIONS = listOf(
     RecurrenceType.DAILY to "Daily",
@@ -81,21 +82,21 @@ fun MedicationForm(
         }
 
         item { Text("Reminder times", color = TymedColors.textMuted) }
-        items(values.times) { time ->
+        itemsIndexed(values.times) { index, time ->
             TimeOfDayRow(
                 value = time,
                 onValueChange = { newTime ->
-                    onValuesChange(values.copy(times = values.times.map { if (it == time) newTime else it }))
+                    onValuesChange(values.copy(times = values.times.withTimeAt(index, newTime)))
                 },
                 onRemove = {
                     if (values.times.size > 1) {
-                        onValuesChange(values.copy(times = values.times.filterNot { it == time }))
+                        onValuesChange(values.copy(times = values.times.withoutTimeAt(index)))
                     }
                 },
             )
         }
         item {
-            TextButton(onClick = { onValuesChange(values.copy(times = values.times + "08:00")) }) {
+            TextButton(onClick = { onValuesChange(values.copy(times = values.times + values.times.nextNewTime())) }) {
                 Text("+ Add time")
             }
         }
@@ -228,4 +229,28 @@ private fun ordinal(day: Int): String {
         3 -> "${day}rd"
         else -> "${day}th"
     }
+}
+
+/* Reminder-time edits go by position, never by value: two slots can hold the same time (e.g. an
+ * existing 08:00 plus a newly added one), and a value-based map/filter would change or remove both
+ * at once — and saving that silently deletes the untouched slot's schedule along with its dose
+ * history. */
+
+internal fun List<String>.withTimeAt(index: Int, newTime: String): List<String> =
+    mapIndexed { i, time -> if (i == index) newTime else time }
+
+internal fun List<String>.withoutTimeAt(index: Int): List<String> =
+    filterIndexed { i, _ -> i != index }
+
+/** The time "+ Add time" starts a new slot at: an hour after the last slot, stepping forward past
+ * any time already in the list, so adding a slot never creates a duplicate. "HH:MM", like the
+ * rest of [MedicationFormValues.times]. */
+internal fun List<String>.nextNewTime(): String {
+    val last = lastOrNull() ?: return "08:00"
+    val (hour, minute) = last.split(":").map { it.toInt() }
+    for (step in 1..24) {
+        val candidate = String.format(Locale.US, "%02d:%02d", (hour + step) % 24, minute)
+        if (candidate !in this) return candidate
+    }
+    return last
 }
