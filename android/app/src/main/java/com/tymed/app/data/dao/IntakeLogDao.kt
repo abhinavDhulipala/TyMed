@@ -17,7 +17,7 @@ data class DoseWithMedication(
 data class DailyAdherenceRow(
     val scheduledDate: String,
     val taken: Int,
-    val resolved: Int,
+    val scheduled: Int,
 )
 
 @Dao
@@ -67,7 +67,7 @@ interface IntakeLogDao {
     @Query(
         "SELECT intake_logs.scheduled_date AS scheduledDate, " +
             "SUM(CASE WHEN intake_logs.status = 'taken' THEN 1 ELSE 0 END) AS taken, " +
-            "SUM(CASE WHEN intake_logs.status IN ('taken', 'skipped') THEN 1 ELSE 0 END) AS resolved " +
+            "COUNT(*) AS scheduled " +
             "FROM intake_logs JOIN medications ON medications.id = intake_logs.medication_id " +
             "WHERE medications.profile_id = :profileId AND intake_logs.scheduled_date BETWEEN :start AND :end " +
             "GROUP BY intake_logs.scheduled_date",

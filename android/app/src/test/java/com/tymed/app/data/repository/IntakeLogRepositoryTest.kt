@@ -89,15 +89,19 @@ class IntakeLogRepositoryTest {
     }
 
     @Test
-    fun `getDailyAdherence sums taken and resolved per day`() = runTest {
+    fun `getDailyAdherence counts pending and skipped doses as scheduled but not taken`() = runTest {
         schedules.createSchedule(medicationId, "08:00", RecurrenceInput(RecurrenceType.DAILY, null, null, null))
+        schedules.createSchedule(medicationId, "14:00", RecurrenceInput(RecurrenceType.DAILY, null, null, null))
+        schedules.createSchedule(medicationId, "20:00", RecurrenceInput(RecurrenceType.DAILY, null, null, null))
         val date = "2026-09-20"
-        val log = logs.getDosesForDate(TEST_PROFILE_ID, date).first()
-        logs.setLogStatus(log.log.id, DoseStatus.TAKEN)
+        val doses = logs.getDosesForDate(TEST_PROFILE_ID, date)
+        logs.setLogStatus(doses[0].log.id, DoseStatus.TAKEN)
+        logs.setLogStatus(doses[1].log.id, DoseStatus.SKIPPED)
 
         val adherence = logs.getDailyAdherence(TEST_PROFILE_ID, date, date)
 
+        // One taken out of three scheduled (one skipped, one still pending) — not 100%.
         assertEquals(1, adherence[date]?.taken)
-        assertEquals(1, adherence[date]?.resolved)
+        assertEquals(3, adherence[date]?.scheduled)
     }
 }

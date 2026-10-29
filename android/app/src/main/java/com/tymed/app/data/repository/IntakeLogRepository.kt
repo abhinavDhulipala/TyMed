@@ -10,7 +10,9 @@ import com.tymed.app.data.entity.IntakeLog
 import com.tymed.app.util.todayDateString
 import java.time.Instant
 
-data class DailyAdherence(val taken: Int, val resolved: Int)
+/** [scheduled] counts every dose on the day — pending and skipped included — so a day only reads
+ * as complete once every dose is actually taken. */
+data class DailyAdherence(val taken: Int, val scheduled: Int)
 
 class IntakeLogRepository(
     private val logDao: IntakeLogDao,
@@ -92,10 +94,10 @@ class IntakeLogRepository(
             ?: error("Failed to create or find today's log for schedule $scheduleId")
     }
 
-    /** Per-day taken/resolved counts between two dates (inclusive), for the adherence calendar. */
+    /** Per-day taken/scheduled counts between two dates (inclusive), for the adherence calendar. */
     suspend fun getDailyAdherence(profileId: Long, startDate: String, endDate: String): Map<String, DailyAdherence> =
         logDao.getDailyAdherence(profileId, startDate, endDate).associate { row: DailyAdherenceRow ->
-            row.scheduledDate to DailyAdherence(row.taken, row.resolved)
+            row.scheduledDate to DailyAdherence(row.taken, row.scheduled)
         }
 
     suspend fun getTodayStatusForSchedule(scheduleId: Long): String? = logDao.getStatus(scheduleId, todayDateString())

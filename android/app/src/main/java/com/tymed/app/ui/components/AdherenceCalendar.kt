@@ -57,9 +57,12 @@ fun AdherenceCalendar(
         value = intakeLogRepository.getDailyAdherence(profileId, grid.first().dateStr, grid.last().dateStr)
     }
 
-    val monthTaken = grid.filter { it.inCurrentMonth }.sumOf { adherence[it.dateStr]?.taken ?: 0 }
-    val monthResolved = grid.filter { it.inCurrentMonth }.sumOf { adherence[it.dateStr]?.resolved ?: 0 }
-    val monthPercent = if (monthResolved > 0) (monthTaken * 100 / monthResolved) else null
+    // Future days are excluded: viewing one creates its pending rows, which would otherwise drag
+    // the month's percentage down for doses that aren't due yet.
+    val monthDays = grid.filter { it.inCurrentMonth && !it.isFuture }
+    val monthTaken = monthDays.sumOf { adherence[it.dateStr]?.taken ?: 0 }
+    val monthScheduled = monthDays.sumOf { adherence[it.dateStr]?.scheduled ?: 0 }
+    val monthPercent = if (monthScheduled > 0) (monthTaken * 100 / monthScheduled) else null
 
     val shape = RoundedCornerShape(TymedRadii.lg)
     Column(
@@ -129,9 +132,9 @@ fun AdherenceCalendar(
                                 .clickable(enabled = day.inCurrentMonth) { onDayClick(day.dateStr) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (day.inCurrentMonth && !day.isFuture && dayAdherence != null && dayAdherence.resolved > 0) {
+                            if (day.inCurrentMonth && !day.isFuture && dayAdherence != null && dayAdherence.scheduled > 0) {
                                 Canvas(modifier = Modifier.size(32.dp)) {
-                                    val fraction = dayAdherence.taken.toFloat() / dayAdherence.resolved.toFloat()
+                                    val fraction = dayAdherence.taken.toFloat() / dayAdherence.scheduled.toFloat()
                                     drawArc(
                                         color = TymedColors.borderStrong,
                                         startAngle = -90f,
