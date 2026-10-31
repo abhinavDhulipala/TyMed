@@ -1,6 +1,9 @@
 package com.tymed.app.ai
 
+import com.tymed.app.util.formatDurationSeconds
 import com.tymed.app.util.formatFullDateLabel
+import com.tymed.app.util.formatInstantDate
+import com.tymed.app.util.formatInstantTime
 import com.tymed.app.util.formatTime
 
 /** The assistant's confirmation questions and "done" messages are rendered here from the tool
@@ -22,6 +25,20 @@ private fun describeSchedule(schedule: ScheduleSummary): String {
     val label = schedule.endDate?.let(::formatFullDateLabel)
     val until = label?.let { " through ${if (it == "Today") "today" else it}" } ?: ""
     return "${describeTimes(schedule.times)} every day$until"
+}
+
+/** "moderate seizure at 3:42 PM yesterday, lasting 1m 30s" — the start time is stated as a clock
+ * time, not "5 minutes ago", so the confirmed text stays true however long the user takes to
+ * answer (the pending call is pinned to that exact start, see AiOrchestrator). */
+private fun describeIncident(summary: IncidentSummary): String {
+    val severity = summary.severity?.let { "$it " } ?: ""
+    val day = when (val label = formatInstantDate(summary.startedAt)) {
+        "Today" -> "today"
+        "Yesterday" -> "yesterday"
+        else -> "on $label"
+    }
+    val duration = if (summary.durationSeconds > 0) ", lasting ${formatDurationSeconds(summary.durationSeconds)}" else ""
+    return "$severity${summary.type} at ${formatInstantTime(summary.startedAt)} $day$duration"
 }
 
 private fun nameWithDosage(name: String, dosage: String?): String = if (dosage != null) "$name $dosage" else name
@@ -62,6 +79,10 @@ fun confirmationQuestion(result: ToolResult): String? = when (result) {
             null
         }
     }
+    is ToolResult.LogIncidentOutcome -> (result.result as? LogIncidentResult.NeedsConfirmation)?.let {
+        val notes = it.summary.notes?.let { n -> " Notes: \"$n\"." } ?: ""
+        "Log a ${describeIncident(it.summary)}?$notes"
+    }
     else -> null
 }
 
@@ -77,6 +98,9 @@ fun doneMessage(result: ToolResult): String? = when (result) {
     }
     is ToolResult.MarkDoseTakenOutcome -> (result.result as? MarkDoseTakenResult.MarkedTaken)?.let {
         "Done — marked your ${formatTime(it.scheduledTime)} ${it.medicationName} dose as taken."
+    }
+    is ToolResult.LogIncidentOutcome -> (result.result as? LogIncidentResult.Logged)?.let {
+        "Done — logged a ${describeIncident(it.summary)}."
     }
     else -> null
 }
