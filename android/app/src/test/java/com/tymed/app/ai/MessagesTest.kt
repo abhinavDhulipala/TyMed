@@ -4,10 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 // End dates are far in the future on purpose: formatFullDateLabel renders the current date as
 // "today" (and the day before as "Yesterday"), so a near-term fixture date breaks on that day.
 class MessagesTest {
+    // Incidents are labelled with the local date they started on, so start at local noon: a fixed
+    // UTC instant like 2099-09-30T12:00Z is already October 1st at UTC+12 and beyond.
+    private val noonInstant = LocalDate.of(2099, 9, 30).atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()
+    private val noon = noonInstant.toString()
 
     @Test
     fun `confirmationQuestion describes an add with its schedule`() {
@@ -60,7 +66,7 @@ class MessagesTest {
 
     @Test
     fun `confirmationQuestion reads back an incident with its notes`() {
-        val summary = IncidentSummary("seizure", "2099-09-30T12:00:00Z", "2099-09-30T12:01:30Z", 90, "mild", "In the yard")
+        val summary = IncidentSummary("seizure", noon, noonInstant.plusSeconds(90).toString(), 90, "mild", "In the yard")
         val question = confirmationQuestion(ToolResult.LogIncidentOutcome(LogIncidentResult.NeedsConfirmation(summary)))!!
         assertTrue(question, question.startsWith("Log a mild seizure at "))
         assertTrue(question, question.contains(" on 2099-09-30, lasting 1m 30s?"))
@@ -98,7 +104,7 @@ class MessagesTest {
 
     @Test
     fun `doneMessage reports a logged incident`() {
-        val summary = IncidentSummary("seizure", "2099-09-30T12:00:00Z", "2099-09-30T12:00:00Z", 0, null, null)
+        val summary = IncidentSummary("seizure", noon, noon, 0, null, null)
         val done = doneMessage(ToolResult.LogIncidentOutcome(LogIncidentResult.Logged(summary)))!!
         assertTrue(done, done.startsWith("Done — logged a seizure at "))
         assertTrue(done, done.endsWith(" on 2099-09-30."))
