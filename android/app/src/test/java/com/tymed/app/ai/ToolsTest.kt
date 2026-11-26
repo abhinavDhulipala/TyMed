@@ -3,6 +3,7 @@ package com.tymed.app.ai
 import androidx.test.core.app.ApplicationProvider
 import com.tymed.app.data.ActiveProfile
 import com.tymed.app.data.FakeAlarmScheduler
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.entity.durationSeconds
 import com.tymed.app.data.repository.DoseActions
@@ -17,6 +18,7 @@ import com.tymed.app.data.repository.newInMemoryDatabase
 import com.tymed.app.util.todayDateString
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -40,7 +42,7 @@ class ToolsTest {
         incidents = IncidentRepository(db.incidentDao())
         alarmScheduler = FakeAlarmScheduler()
         val doseActions = DoseActions(logs, medications, schedules, alarmScheduler)
-        val sync = ScheduleSyncRepository(schedules, alarmScheduler)
+        val sync = ScheduleSyncRepository(medications, schedules, alarmScheduler)
         val activeProfile = ActiveProfile(ApplicationProvider.getApplicationContext()).apply { switchTo(TEST_PROFILE_ID) }
         tools = Tools(activeProfile, medications, schedules, logs, sync, alarmScheduler, doseActions, incidents)
     }
@@ -194,5 +196,17 @@ class ToolsTest {
     fun `runTool surfaces a validation failure as an error`() = runTest {
         val result = tools.runTool("add_medication", mapOf("name" to ""))
         assertTrue(result is ToolResult.Error)
+    }
+
+    @Test
+    fun `an assistant schedule change keeps a muted medication muted`() = runTest {
+        tools.addMedication("Keppra", "250mg", listOf("08:00"), null, confirmed = true)
+        assertNull(alarmScheduler.scheduled.single().mutedUntil)
+        medications.setMutedUntil(medications.listMedications(TEST_PROFILE_ID).single().id, ReminderMute.INDEFINITE)
+        alarmScheduler.scheduled.clear()
+
+        tools.updateMedicationSchedule("Keppra", null, listOf("09:00", "21:00"), null, confirmed = true)
+
+        assertEquals(listOf(ReminderMute.INDEFINITE, ReminderMute.INDEFINITE), alarmScheduler.scheduled.map { it.mutedUntil })
     }
 }

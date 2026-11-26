@@ -141,7 +141,7 @@ class DatabaseMigrationTest {
         // disk. All three migrations are required here (not just MIGRATION_4_5) since the legacy
         // file is still at version 4 and the database's declared version has since moved to 7.
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
         try {
             runBlocking {
@@ -222,7 +222,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
         try {
             runBlocking {
@@ -322,7 +322,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
         try {
             runBlocking {
@@ -416,7 +416,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
         try {
             runBlocking {
@@ -539,7 +539,7 @@ class DatabaseMigrationTest {
         }
 
         val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
-            .addMigrations(MIGRATION_8_9)
+            .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
             .build()
         try {
             runBlocking {
@@ -557,6 +557,115 @@ class DatabaseMigrationTest {
                 )
                 val withPhoto = db.profileDao().getById(newId)
                 assertEquals("/data/user/0/com.tymed.app/files/profile_photos/mom.jpg", withPhoto?.photoPath)
+            }
+        } finally {
+            db.close()
+            dbFile.delete()
+        }
+    }
+
+    /** Proves [MIGRATION_9_10]'s plain `ADD COLUMN`: an existing medication keeps its data and
+     * comes out not muted, and the new column is writable afterward. */
+    @Test
+    fun migrate9To10KeepsMedicationsUnmuted() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val dbFile = testDbFile(context)
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { legacy ->
+            legacy.execSQL(
+                """
+                CREATE TABLE profiles (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL, color_hex TEXT NOT NULL, created_at TEXT NOT NULL, photo_path TEXT
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE medications (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    profile_id INTEGER NOT NULL,
+                    name TEXT NOT NULL, dosage TEXT, form TEXT, notes TEXT,
+                    pills_remaining INTEGER, refill_threshold INTEGER, created_at TEXT NOT NULL,
+                    FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE schedules (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, time_of_day TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+                    notification_ids TEXT, days_of_week TEXT, recurrence_type TEXT NOT NULL DEFAULT 'daily',
+                    start_date TEXT, end_date TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE intake_logs (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    medication_id INTEGER NOT NULL, schedule_id INTEGER, scheduled_date TEXT NOT NULL,
+                    scheduled_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', taken_at TEXT,
+                    FOREIGN KEY(medication_id) REFERENCES medications(id) ON DELETE CASCADE,
+                    FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE app_settings (
+                    profile_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+                    PRIMARY KEY(profile_id, key),
+                    FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL(
+                """
+                CREATE TABLE incidents (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    profile_id INTEGER NOT NULL,
+                    type TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT NOT NULL,
+                    severity TEXT, notes TEXT, created_at TEXT NOT NULL,
+                    FOREIGN KEY(profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            legacy.execSQL("CREATE INDEX idx_schedules_medication ON schedules(medication_id)")
+            legacy.execSQL("CREATE UNIQUE INDEX idx_logs_schedule_date ON intake_logs(schedule_id, scheduled_date)")
+            legacy.execSQL("CREATE INDEX idx_logs_date ON intake_logs(scheduled_date)")
+            legacy.execSQL("CREATE INDEX idx_medications_profile ON medications(profile_id)")
+            legacy.execSQL("CREATE INDEX idx_incidents_profile ON incidents(profile_id)")
+            legacy.execSQL("CREATE INDEX idx_app_settings_profile ON app_settings(profile_id)")
+
+            legacy.execSQL(
+                "INSERT INTO profiles (id, name, color_hex, created_at) VALUES (1, 'Me', '#E07A5F', '2026-01-01T00:00:00.000Z')",
+            )
+
+            legacy.execSQL(
+                "INSERT INTO medications (id, profile_id, name, dosage, pills_remaining, created_at) " +
+                    "VALUES (1, 1, 'Aspirin', '81mg', 20, '2026-01-01T00:00:00.000Z')",
+            )
+
+            legacy.version = 9
+        }
+
+        val db = Room.databaseBuilder(context, TymedDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(MIGRATION_9_10)
+            .build()
+        try {
+            runBlocking {
+                val existing = db.medicationDao().getById(1)
+                assertEquals("Aspirin", existing?.name)
+                assertEquals(20, existing?.pillsRemaining)
+                assertEquals(null, existing?.mutedUntil)
+
+                db.medicationDao().setMutedUntil(1, ReminderMute.INDEFINITE)
+                assertEquals(ReminderMute.INDEFINITE, db.medicationDao().getById(1)?.mutedUntil)
             }
         } finally {
             db.close()

@@ -223,9 +223,17 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/** Adds an optional per-medication alarm mute. A plain nullable column, like [MIGRATION_8_9] —
+ * every pre-existing medication gets NULL, i.e. keeps ringing. */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE medications ADD COLUMN muted_until TEXT")
+    }
+}
+
 @Database(
     entities = [Medication::class, Schedule::class, IntakeLog::class, AppSettingEntity::class, Incident::class, Profile::class],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class TymedDatabase : RoomDatabase() {
@@ -258,7 +266,7 @@ abstract class TymedDatabase : RoomDatabase() {
             val dbFile = databaseFile(context)
             dbFile.parentFile?.mkdirs()
             return Room.databaseBuilder(context.applicationContext, TymedDatabase::class.java, dbFile.absolutePath)
-                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .build()
         }
     }

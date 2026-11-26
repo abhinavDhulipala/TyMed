@@ -1,5 +1,6 @@
 package com.tymed.app.util
 
+import com.tymed.app.data.ReminderMute
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -54,6 +55,16 @@ fun formatInstantDate(isoInstant: String): String =
     } catch (error: Exception) {
         formatDateLabel(todayDateString())
     }
+
+/** "until Friday, November 27, 9:00 AM", or "until you unmute", for a
+ * [com.tymed.app.data.entity.Medication.mutedUntil] value. */
+fun formatMutedUntil(mutedUntil: String): String {
+    if (ReminderMute.isIndefinite(mutedUntil)) return "until you unmute"
+    val date = Instant.parse(mutedUntil).atZone(ZoneId.systemDefault()).toLocalDate()
+    val year = if (date.year != LocalDate.now().year) ", ${date.year}" else ""
+    val day = if (date == LocalDate.now()) "today" else formatFullDateLabel(todayDateString(date))
+    return "until $day$year, ${formatInstantTime(mutedUntil)}"
+}
 
 /** "1h 05m", "5m 30s", or "45s" — whichever units apply, dropping leading zero units. */
 fun formatDurationSeconds(totalSeconds: Long): String {

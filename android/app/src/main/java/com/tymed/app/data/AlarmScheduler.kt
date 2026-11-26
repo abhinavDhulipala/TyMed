@@ -13,6 +13,8 @@ data class DoseReminderParams(
     val daysOfWeek: List<Int>?, // 0=Sun..6=Sat; only meaningful when recurrenceType == WEEKLY
     val startDate: String?,
     val endDate: String?,
+    /** No default on purpose: an arming path that forgets it would silently undo a mute. */
+    val mutedUntil: String?,
 )
 
 /** Boundary between the data layer (which decides *when* a dose should remind) and the alarm
@@ -21,7 +23,9 @@ data class DoseReminderParams(
  * to know about AlarmManager, matching the old split between src/db (schedule decisions) and
  * src/notifications/scheduler.ts + the native module (actually arming the OS alarm). */
 interface AlarmScheduler {
-    /** Arms (or idempotently re-arms) the daily reminder for one schedule. */
+    /** Arms (or idempotently re-arms) the daily reminder for one schedule. While muted, that's
+     * the first occurrence after the mute ends (or nothing at all, if it's indefinite), and any
+     * pending snooze follow-up is dropped. */
     fun scheduleDoseReminders(params: DoseReminderParams)
 
     /** Cancels both the daily chain and any pending snooze follow-up for one schedule. */

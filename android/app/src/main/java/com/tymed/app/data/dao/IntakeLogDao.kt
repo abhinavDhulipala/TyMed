@@ -12,6 +12,7 @@ data class DoseWithMedication(
     val log: IntakeLog,
     val medicationName: String,
     val dosage: String?,
+    val mutedUntil: String? = null,
 )
 
 data class DailyAdherenceRow(
@@ -50,7 +51,8 @@ interface IntakeLogDao {
     suspend fun setTakenAt(id: Long, takenAt: String)
 
     @Query(
-        "SELECT intake_logs.*, medications.name AS medicationName, medications.dosage AS dosage " +
+        "SELECT intake_logs.*, medications.name AS medicationName, medications.dosage AS dosage, " +
+            "medications.muted_until AS mutedUntil " +
             "FROM intake_logs JOIN medications ON medications.id = intake_logs.medication_id " +
             "WHERE intake_logs.scheduled_date = :date AND medications.profile_id = :profileId " +
             "ORDER BY intake_logs.scheduled_time",
@@ -58,7 +60,8 @@ interface IntakeLogDao {
     suspend fun getDosesForDate(profileId: Long, date: String): List<DoseWithMedication>
 
     @Query(
-        "SELECT intake_logs.*, medications.name AS medicationName, medications.dosage AS dosage " +
+        "SELECT intake_logs.*, medications.name AS medicationName, medications.dosage AS dosage, " +
+            "medications.muted_until AS mutedUntil " +
             "FROM intake_logs JOIN medications ON medications.id = intake_logs.medication_id " +
             "WHERE intake_logs.id = :id",
     )

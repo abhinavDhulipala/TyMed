@@ -4,10 +4,12 @@ import android.content.Context
 import android.content.Intent
 import com.tymed.app.data.AlarmScheduler
 import com.tymed.app.data.DoseReminderParams
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.dao.ScheduleWithMedication
 import com.tymed.app.data.repository.decodeDaysOfWeek
 import com.tymed.app.util.todayDateString
-import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 
 /** Encodes for the alarm receiver: comma-separated weekday numbers, or "" for none/unused. */
 private fun encodeDaysOfWeekCsv(daysOfWeek: List<Int>?): String = daysOfWeek?.takeIf { it.isNotEmpty() }?.joinToString(",") ?: ""
@@ -23,10 +25,22 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
             cancelDoseReminders(params.scheduleId)
             return
         }
+        val muteEnd = ReminderMute.activeUntil(params.mutedUntil)
+        if (muteEnd != null) {
+            // Not just the daily chain: a pending snooze follow-up must go quiet too.
+            cancelDoseReminders(params.scheduleId)
+            if (ReminderMute.isIndefinite(params.mutedUntil)) return
+        }
+        val triggerAtMillis = if (muteEnd == null) {
+            nextOccurrenceMillis(hour, minute)
+        } else {
+            nextOccurrenceMillis(hour, minute, afterMillis = muteEnd.toEpochMilli())
+        }
+        if (muteEnd != null && isPastEndDate(triggerAtMillis, params.endDate)) return
         armAlarm(
             context,
             AlarmSchedule(
-                triggerAtMillis = nextOccurrenceMillis(hour, minute),
+                triggerAtMillis = triggerAtMillis,
                 requestCode = params.scheduleId.toInt(),
                 scheduleId = params.scheduleId.toInt(),
                 medicationId = params.medicationId.toInt(),
@@ -73,15 +87,24 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
         stopRinging(id.toInt())
         stopRinging(id.toInt() + SNOOZE_REQUEST_CODE_OFFSET)
 
-        val endDate = schedule.schedule.endDate
-        val tomorrow = todayDateString(LocalDate.now().plusDays(1))
-        if (endDate != null && tomorrow > endDate) return
-
+        // A muted dose can still be marked taken — that must not arm tomorrow's alarm early.
+        if (ReminderMute.isIndefinite(schedule.mutedUntil)) return
         val (hour, minute) = parseTimeOfDay(schedule.schedule.timeOfDay)
+        val muteEnd = ReminderMute.activeUntil(schedule.mutedUntil)
+        val tomorrowMillis = tomorrowOccurrenceMillis(hour, minute)
+        val triggerAtMillis = if (muteEnd == null) {
+            tomorrowMillis
+        } else {
+            maxOf(tomorrowMillis, nextOccurrenceMillis(hour, minute, afterMillis = muteEnd.toEpochMilli()))
+        }
+
+        val endDate = schedule.schedule.endDate
+        if (isPastEndDate(triggerAtMillis, endDate)) return
+
         armAlarm(
             context,
             AlarmSchedule(
-                triggerAtMillis = tomorrowOccurrenceMillis(hour, minute),
+                triggerAtMillis = triggerAtMillis,
                 requestCode = id.toInt(),
                 scheduleId = id.toInt(),
                 medicationId = schedule.schedule.medicationId.toInt(),
@@ -116,6 +139,7 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
                     daysOfWeek = decodeDaysOfWeek(schedule.schedule.daysOfWeek),
                     startDate = schedule.schedule.startDate,
                     endDate = schedule.schedule.endDate,
+                    mutedUntil = schedule.mutedUntil,
                 ),
             )
         }
@@ -133,6 +157,12 @@ class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
             .edit()
             .remove(prefKeyFollowUpMinutes(profileId.toInt()))
             .apply()
+    }
+
+    private fun isPastEndDate(triggerAtMillis: Long, endDate: String?): Boolean {
+        if (endDate == null) return false
+        val triggerDate = Instant.ofEpochMilli(triggerAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        return todayDateString(triggerDate) > endDate
     }
 
     private fun parseTimeOfDay(timeOfDay: String): Pair<Int, Int> {

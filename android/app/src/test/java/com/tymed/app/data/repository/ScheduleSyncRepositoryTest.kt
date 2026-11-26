@@ -1,6 +1,7 @@
 package com.tymed.app.data.repository
 
 import com.tymed.app.data.FakeAlarmScheduler
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.entity.RecurrenceType
 import com.tymed.app.util.todayDateString
 import kotlinx.coroutines.test.runTest
@@ -26,7 +27,7 @@ class ScheduleSyncRepositoryTest {
         medications = MedicationRepository(db.medicationDao())
         schedules = ScheduleRepository(db.scheduleDao())
         alarmScheduler = FakeAlarmScheduler()
-        sync = ScheduleSyncRepository(schedules, alarmScheduler)
+        sync = ScheduleSyncRepository(medications, schedules, alarmScheduler)
         medicationId = medications.createMedication(TEST_PROFILE_ID, MedicationInput("Ibuprofen", "200mg", null, null, null, null))
     }
 
@@ -63,6 +64,18 @@ class ScheduleSyncRepositoryTest {
 
         assertEquals(1, alarmScheduler.scheduled.size)
         assertEquals("Ibuprofen (renamed)", alarmScheduler.scheduled.single().medicationName)
+    }
+
+    @Test
+    fun `editing a muted medication keeps it muted, including newly added times`() = runTest {
+        sync.syncMedicationSchedules(medicationId, TEST_PROFILE_ID, "Ibuprofen", "200mg", listOf("08:00"), RecurrenceType.DAILY, null, null)
+        medications.setMutedUntil(medicationId, ReminderMute.INDEFINITE)
+        medications.updateMedication(medicationId, MedicationInput("Ibuprofen", "400mg", null, null, null, null))
+        alarmScheduler.scheduled.clear()
+
+        sync.syncMedicationSchedules(medicationId, TEST_PROFILE_ID, "Ibuprofen", "400mg", listOf("08:00", "20:00"), RecurrenceType.DAILY, null, null)
+
+        assertEquals(listOf(ReminderMute.INDEFINITE, ReminderMute.INDEFINITE), alarmScheduler.scheduled.map { it.mutedUntil })
     }
 
     @Test

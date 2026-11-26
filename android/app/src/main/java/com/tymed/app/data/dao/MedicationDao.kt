@@ -24,6 +24,9 @@ interface MedicationDao {
     @Query("SELECT * FROM medications ORDER BY name COLLATE NOCASE")
     suspend fun getAll(): List<Medication>
 
+    @Query("UPDATE medications SET muted_until = :mutedUntil WHERE id = :id")
+    suspend fun setMutedUntil(id: Long, mutedUntil: String?)
+
     @Query("DELETE FROM medications WHERE id = :id")
     suspend fun deleteById(id: Long)
 

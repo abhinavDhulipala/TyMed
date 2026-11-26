@@ -12,6 +12,7 @@ data class ScheduleWithMedication(
     val medicationName: String,
     val dosage: String?,
     val profileId: Long,
+    val mutedUntil: String? = null,
 )
 
 @Dao
@@ -51,7 +52,8 @@ interface ScheduleDao {
     suspend fun deleteById(id: Long)
 
     @Query(
-        "SELECT schedules.*, medications.name AS medicationName, medications.dosage AS dosage, medications.profile_id AS profileId " +
+        "SELECT schedules.*, medications.name AS medicationName, medications.dosage AS dosage, medications.profile_id AS profileId, " +
+            "medications.muted_until AS mutedUntil " +
             "FROM schedules JOIN medications ON medications.id = schedules.medication_id " +
             "WHERE schedules.id = :id",
     )
@@ -59,9 +61,18 @@ interface ScheduleDao {
 
     /** Unfiltered across every profile — see [listAllEnabled] above for why. */
     @Query(
-        "SELECT schedules.*, medications.name AS medicationName, medications.dosage AS dosage, medications.profile_id AS profileId " +
+        "SELECT schedules.*, medications.name AS medicationName, medications.dosage AS dosage, medications.profile_id AS profileId, " +
+            "medications.muted_until AS mutedUntil " +
             "FROM schedules JOIN medications ON medications.id = schedules.medication_id " +
             "WHERE schedules.enabled = 1",
     )
     suspend fun listAllEnabledWithMedication(): List<ScheduleWithMedication>
+
+    @Query(
+        "SELECT schedules.*, medications.name AS medicationName, medications.dosage AS dosage, medications.profile_id AS profileId, " +
+            "medications.muted_until AS mutedUntil " +
+            "FROM schedules JOIN medications ON medications.id = schedules.medication_id " +
+            "WHERE schedules.enabled = 1 AND schedules.medication_id = :medicationId",
+    )
+    suspend fun listEnabledWithMedication(medicationId: Long): List<ScheduleWithMedication>
 }

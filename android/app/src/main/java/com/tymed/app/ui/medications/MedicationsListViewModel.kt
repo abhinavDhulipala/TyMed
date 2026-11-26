@@ -17,4 +17,19 @@ class MedicationsListViewModel(private val container: AppContainer) : ViewModel(
             _medications.value = container.medicationRepository.listMedications(profileId)
         }
     }
+
+    /** [days] null mutes until unmuted. */
+    fun mute(medication: Medication, days: Int?) {
+        viewModelScope.launch {
+            container.muteActions.mute(medication.id, days)
+            refresh(medication.profileId)
+        }
+    }
+
+    fun unmute(medication: Medication) {
+        viewModelScope.launch {
+            container.muteActions.unmute(medication.id)
+            refresh(medication.profileId)
+        }
+    }
 }

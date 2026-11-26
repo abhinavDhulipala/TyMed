@@ -1,6 +1,7 @@
 package com.tymed.app.data.repository
 
 import com.tymed.app.data.FakeAlarmScheduler
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.entity.RecurrenceType
 import com.tymed.app.util.todayDateString
@@ -82,5 +83,16 @@ class DoseActionsTest {
 
         assertEquals(10, medications.getMedication(medicationId)?.pillsRemaining)
         assertEquals(1, alarmScheduler.skipped.size)
+    }
+
+    @Test
+    fun `a muted dose can be marked taken as usual, and the scheduler is told about the mute`() = runTest {
+        medications.setMutedUntil(medicationId, ReminderMute.INDEFINITE)
+
+        doseActions.markDose(todaysLogId(), DoseStatus.TAKEN)
+
+        assertEquals(9, medications.getMedication(medicationId)?.pillsRemaining)
+        assertEquals(ReminderMute.INDEFINITE, alarmScheduler.skipped.single().mutedUntil)
+        assertEquals(ReminderMute.INDEFINITE, medications.getMedication(medicationId)?.mutedUntil)
     }
 }

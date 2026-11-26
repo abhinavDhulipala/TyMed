@@ -37,4 +37,8 @@ data class Medication(
     val refillThreshold: Int? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: String,
+    /** ISO instant this medication's alarms stay silent until; null when not muted. See
+     * [com.tymed.app.data.ReminderMute]. */
+    @ColumnInfo(name = "muted_until")
+    val mutedUntil: String? = null,
 )
