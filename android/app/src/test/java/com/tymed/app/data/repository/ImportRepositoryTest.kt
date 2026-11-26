@@ -1,6 +1,7 @@
 package com.tymed.app.data.repository
 
 import com.tymed.app.data.FakeAlarmScheduler
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.TymedDatabase
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.entity.Incident
@@ -209,5 +210,23 @@ class ImportRepositoryTest {
         assertTrue(medications.listMedications(TEST_PROFILE_ID).isEmpty())
         val mom = allProfiles.single { it.name == "Mom" }
         assertEquals("Lisinopril", medications.listMedications(mom.id).single().name)
+    }
+
+    @Test
+    fun `importing a new time for a muted medication leaves it muted and arms it that way`() = runTest {
+        importer.importData(TEST_PROFILE_ID, file)
+        val id = medications.listMedications(TEST_PROFILE_ID).single().id
+        medications.setMutedUntil(id, ReminderMute.INDEFINITE)
+        alarmScheduler.rearmed.clear()
+
+        importer.importData(
+            TEST_PROFILE_ID,
+            ImportData(listOf(profileData.copy(schedules = listOf(Schedule(id = 201, medicationId = 100, timeOfDay = "20:00")), intakeLogs = emptyList()))),
+        )
+
+        assertEquals(ReminderMute.INDEFINITE, medications.getMedication(id)?.mutedUntil)
+        val rearmed = alarmScheduler.rearmed.single()
+        assertEquals(setOf("08:00", "20:00"), rearmed.map { it.schedule.timeOfDay }.toSet())
+        assertTrue(rearmed.all { it.mutedUntil == ReminderMute.INDEFINITE })
     }
 }

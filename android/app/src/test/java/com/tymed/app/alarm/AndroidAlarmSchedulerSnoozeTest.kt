@@ -102,6 +102,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 daysOfWeek = null,
                 startDate = null,
                 endDate = null,
+                mutedUntil = null,
             ),
         )
 
@@ -190,6 +191,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 daysOfWeek = null,
                 startDate = null,
                 endDate = null,
+                mutedUntil = null,
             ),
         )
 
@@ -248,6 +250,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 daysOfWeek = null,
                 startDate = null,
                 endDate = null,
+                mutedUntil = null,
             ),
         )
 
@@ -332,6 +335,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 daysOfWeek = null,
                 startDate = null,
                 endDate = null,
+                mutedUntil = null,
             ),
         )
         scheduler.scheduleDoseReminders(
@@ -346,6 +350,7 @@ class AndroidAlarmSchedulerSnoozeTest {
                 daysOfWeek = null,
                 startDate = null,
                 endDate = null,
+                mutedUntil = null,
             ),
         )
         assertEquals(2, shadowOf(alarmManager).scheduledAlarms.size)

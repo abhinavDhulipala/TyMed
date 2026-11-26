@@ -17,13 +17,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tymed.app.data.entity.Medication
 import com.tymed.app.ui.TymedViewModelFactory
 import com.tymed.app.ui.components.EmptyState
 import com.tymed.app.ui.components.MedicationCard
+import com.tymed.app.ui.components.MuteDialog
 import com.tymed.app.ui.rememberAppContainer
 import com.tymed.app.ui.theme.TymedSpacing
 
@@ -37,6 +42,7 @@ fun MedicationsListScreen(
     val viewModel: MedicationsListViewModel = viewModel(factory = TymedViewModelFactory(container) { MedicationsListViewModel(it) })
     val medications by viewModel.medications.collectAsState()
     val profileId = container.activeProfile.current
+    var muting by remember { mutableStateOf<Medication?>(null) }
 
     LaunchedEffect(profileId) { viewModel.refresh(profileId) }
     LifecycleResumeEffect(profileId) {
@@ -61,9 +67,25 @@ fun MedicationsListScreen(
                 verticalArrangement = Arrangement.spacedBy(TymedSpacing.sm),
             ) {
                 items(medications) { medication ->
-                    MedicationCard(medication = medication, onClick = { onMedicationClick(medication.id) })
+                    MedicationCard(
+                        medication = medication,
+                        onClick = { onMedicationClick(medication.id) },
+                        onMute = { muting = medication },
+                        onUnmute = { viewModel.unmute(medication) },
+                    )
                 }
             }
         }
+    }
+
+    muting?.let { medication ->
+        MuteDialog(
+            medicationName = medication.name,
+            onMute = { days ->
+                viewModel.mute(medication, days)
+                muting = null
+            },
+            onDismiss = { muting = null },
+        )
     }
 }

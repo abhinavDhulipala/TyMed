@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.dao.DoseWithMedication
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.ui.theme.TymedColors
@@ -27,6 +28,9 @@ import com.tymed.app.ui.theme.TymedRadii
 import com.tymed.app.ui.theme.TymedSpacing
 import com.tymed.app.util.formatInstantTime
 import com.tymed.app.util.formatTime
+import com.tymed.app.util.parseDateStr
+import java.time.LocalTime
+import java.time.ZonedDateTime
 
 @Composable
 fun DoseRow(
@@ -60,6 +64,9 @@ fun DoseRow(
                 Text(text = formatTime(dose.log.scheduledTime), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(text = dose.medicationName, color = TymedColors.text, fontSize = 14.sp)
                 dose.dosage?.let { Text(text = it, color = TymedColors.textMuted, fontSize = 13.sp) }
+                if (isAlarmMuted(dose)) {
+                    Text(text = "Alarm muted", color = TymedColors.warning, fontSize = 13.sp)
+                }
             }
             Text(
                 text = statusLabel,
@@ -90,4 +97,15 @@ fun DoseRow(
             }
         }
     }
+}
+
+/** Whether a still-pending dose falls inside its medication's current mute. Past days never do:
+ * only the mute's end is stored, so there's no telling whether an old dose was muted. */
+internal fun isAlarmMuted(dose: DoseWithMedication, now: ZonedDateTime = ZonedDateTime.now()): Boolean {
+    if (dose.log.status != DoseStatus.PENDING) return false
+    val muteEnd = ReminderMute.activeUntil(dose.mutedUntil, now.toInstant()) ?: return false
+    val date = parseDateStr(dose.log.scheduledDate)
+    if (date < now.toLocalDate()) return false
+    val scheduledAt = date.atTime(LocalTime.parse(dose.log.scheduledTime)).atZone(now.zone).toInstant()
+    return scheduledAt <= muteEnd
 }

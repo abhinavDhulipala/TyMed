@@ -1,5 +1,6 @@
 package com.tymed.app.importer
 
+import com.tymed.app.data.ReminderMute
 import com.tymed.app.data.entity.DoseStatus
 import com.tymed.app.data.entity.Incident
 import com.tymed.app.data.entity.IntakeLog
@@ -150,5 +151,19 @@ class ImportParserTest {
             listOf(listOf("a", "b", "c"), listOf("x, y", "say \"hi\"", "line1\nline2"), listOf("1", "", "3")),
             rows,
         )
+    }
+
+    /** A restored medication must ring: being silent because of a mute set on some other device
+     * (or long ago) is a missed dose nobody asked for. */
+    @Test
+    fun `a mute does not travel through an export`() {
+        val muted = profileExport.copy(medications = profileExport.medications.map { it.copy(mutedUntil = ReminderMute.INDEFINITE) })
+        val mutedSnapshot = ExportSnapshot(listOf(muted))
+
+        for (bytes in listOf(JsonExporter.render(mutedSnapshot).toByteArray(), CsvExporter.render(mutedSnapshot))) {
+            val parsed = ImportParser.parse(bytes).profiles.single().medications
+            assertEquals(2, parsed.size)
+            assertTrue(parsed.all { it.mutedUntil == null })
+        }
     }
 }

@@ -120,14 +120,16 @@ fun cancelAlarm(context: Context, requestCode: Int) {
     operation.cancel()
 }
 
-fun nextOccurrenceMillis(hour: Int, minute: Int): Long {
+/** The first [hour]:[minute] strictly after [afterMillis]. */
+fun nextOccurrenceMillis(hour: Int, minute: Int, afterMillis: Long = System.currentTimeMillis()): Long {
     val cal = java.util.Calendar.getInstance().apply {
+        timeInMillis = afterMillis
         set(java.util.Calendar.HOUR_OF_DAY, hour)
         set(java.util.Calendar.MINUTE, minute)
         set(java.util.Calendar.SECOND, 0)
         set(java.util.Calendar.MILLISECOND, 0)
     }
-    if (cal.timeInMillis <= System.currentTimeMillis()) {
+    if (cal.timeInMillis <= afterMillis) {
         cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
     }
     return cal.timeInMillis

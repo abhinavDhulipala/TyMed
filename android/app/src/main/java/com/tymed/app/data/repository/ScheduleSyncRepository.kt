@@ -11,6 +11,7 @@ import com.tymed.app.util.todayDateString
  * re-arms their reminders. Shared by the edit screen and the AI assistant's
  * update_medication_schedule tool so both edit schedules the exact same way. */
 class ScheduleSyncRepository(
+    private val medicationRepository: MedicationRepository,
     private val scheduleRepository: ScheduleRepository,
     private val alarmScheduler: AlarmScheduler,
 ) {
@@ -41,6 +42,8 @@ class ScheduleSyncRepository(
             alarmScheduler.cancelDoseReminders(schedule.id)
             scheduleRepository.deleteSchedule(schedule.id)
         }
+
+        val mutedUntil = medicationRepository.getMedication(medicationId)?.mutedUntil
 
         for (time in uniqueTimes) {
             val existing = existingByTime[time]
@@ -80,6 +83,7 @@ class ScheduleSyncRepository(
                     daysOfWeek = nextRule.daysOfWeek,
                     startDate = nextRule.startDate,
                     endDate = nextRule.endDate,
+                    mutedUntil = mutedUntil,
                 ),
             )
         }

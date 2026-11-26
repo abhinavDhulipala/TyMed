@@ -14,6 +14,7 @@ import com.tymed.app.data.repository.ImportRepository
 import com.tymed.app.data.repository.IncidentRepository
 import com.tymed.app.data.repository.IntakeLogRepository
 import com.tymed.app.data.repository.MedicationRepository
+import com.tymed.app.data.repository.MuteActions
 import com.tymed.app.data.repository.ProfileRepository
 import com.tymed.app.data.repository.ScheduleRepository
 import com.tymed.app.data.repository.ScheduleSyncRepository
@@ -46,7 +47,8 @@ class AppContainer(context: Context) {
     val importRepository = ImportRepository(database, profileRepository, medicationRepository, scheduleRepository, alarmScheduler)
 
     val doseActions = DoseActions(intakeLogRepository, medicationRepository, scheduleRepository, alarmScheduler)
-    val scheduleSyncRepository = ScheduleSyncRepository(scheduleRepository, alarmScheduler)
+    val scheduleSyncRepository = ScheduleSyncRepository(medicationRepository, scheduleRepository, alarmScheduler)
+    val muteActions = MuteActions(medicationRepository, scheduleRepository, intakeLogRepository, alarmScheduler)
 
     // Retained here (not per-ViewModel) so the prepared Gemini Nano model survives navigating
     // away from and back to the Assistant tab, matching the old app-process-lifetime module.

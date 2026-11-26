@@ -1,5 +1,6 @@
 package com.tymed.app.data.repository
 
+import com.tymed.app.data.ReminderMute
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -68,5 +69,17 @@ class MedicationRepositoryTest {
         repository.decrementPillCount(id)
         repository.incrementPillCount(id)
         assertEquals(10, repository.getMedication(id)?.pillsRemaining)
+    }
+
+    @Test
+    fun `editing a medication keeps its mute, and a new one starts unmuted`() = runTest {
+        val id = repository.createMedication(TEST_PROFILE_ID, MedicationInput("Keppra", "250mg", null, null, null, null))
+        assertNull(repository.getMedication(id)?.mutedUntil)
+        repository.setMutedUntil(id, ReminderMute.INDEFINITE)
+
+        repository.updateMedication(id, MedicationInput("Keppra XR", "500mg", null, null, null, null))
+
+        assertEquals("Keppra XR", repository.getMedication(id)?.name)
+        assertEquals(ReminderMute.INDEFINITE, repository.getMedication(id)?.mutedUntil)
     }
 }

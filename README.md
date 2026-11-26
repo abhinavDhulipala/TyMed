@@ -12,6 +12,8 @@ out of the way once you've taken your dose. Native Android, local-only storage.
   marked taken. Implemented with `AlarmManager.setAlarmClock` + a foreground service + a
   full-screen lock-screen activity (`com.tymed.app.alarm`) since this isn't possible with a plain
   scheduled notification.
+- **Muting** — silence one medication's alarms for a number of days or until unmuted (e.g. while
+  someone else is giving them). Its doses still show up and can be marked as usual.
 - **Today & history** — the home screen is just today's doses; every calendar day is the same
   view. Tap any day to see what was scheduled, and tap any dose to mark it taken/skipped or
   correct the recorded time.

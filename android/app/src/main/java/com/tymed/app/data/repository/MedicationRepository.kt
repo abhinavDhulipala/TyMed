@@ -59,6 +59,9 @@ class MedicationRepository(private val dao: MedicationDao) {
 
     suspend fun deleteMedication(id: Long) = dao.deleteById(id)
 
+    /** Storage only — go through [MuteActions] so the armed alarms change with it. */
+    suspend fun setMutedUntil(id: Long, mutedUntil: String?) = dao.setMutedUntil(id, mutedUntil)
+
     suspend fun decrementPillCount(medicationId: Long) = dao.decrementPillCount(medicationId)
 
     suspend fun incrementPillCount(medicationId: Long) = dao.incrementPillCount(medicationId)
