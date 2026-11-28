@@ -12,6 +12,10 @@ private const val UNBACKED_CLAIM_CORRECTION =
     "You have NOT changed anything: no tool result in this turn says saved:true. Call the tool that does what the " +
         "user asked, or tell them you could not do it."
 
+// Arguments only the app sets, never the model: confirmed is the user's yes (see [AiOrchestrator]),
+// startedAt is log_incident's start pinned at question time (see [pinnedArgs]).
+private val APP_ONLY_ARGS = setOf("confirmed", "startedAt")
+
 // "I've marked…", "I added…" — a claim that something was written, which must be backed by a
 // saved tool result this turn. Evals caught Gemini Nano replying "I've marked your aspirin dose
 // as taken" without calling any tool.
@@ -44,19 +48,25 @@ private fun stripUnmentionedDuration(args: Map<String, Any?>, userMessage: Strin
     return args - "durationDays"
 }
 
-/** A write the user has been asked to confirm — held by the app, not the model. */
-data class PendingAction(val name: String, val arguments: Map<String, Any?>)
+/** A write the user has been asked to confirm — held by the app, not the model. Tied to the
+ * profile it was asked under, so switching profiles before answering can't apply it to someone
+ * else's medications. */
+data class PendingAction(val name: String, val arguments: Map<String, Any?>, val profileId: Long)
 
 data class RunTurnResult(val reply: String, val history: List<HistoryEntry>, val pending: PendingAction?)
 
 private fun wasSaved(result: ToolResult): Boolean = doneMessage(result) != null
 
-private fun needsConfirmation(result: ToolResult): Boolean = when (result) {
-    is ToolResult.AddMedicationOutcome -> result.result is AddMedicationResult.NeedsConfirmation ||
-        (result.result as? AddMedicationResult.ExistingUpdated)?.update is UpdateScheduleResult.NeedsConfirmation
-    is ToolResult.UpdateScheduleOutcome -> result.result is UpdateScheduleResult.NeedsConfirmation
-    is ToolResult.MarkDoseTakenOutcome -> result.result is MarkDoseTakenResult.NeedsConfirmation
-    else -> false
+/** The pending call's arguments with whatever the confirmation question resolved pinned in, so a
+ * "yes" applies exactly what was asked even if things moved in between: without this, a dose
+ * marked taken from its notification meanwhile would make "mark aspirin taken" resolve to the
+ * *next* pending dose, and an incident's "5 minutes ago" would be re-measured from the yes. */
+private fun pinnedArgs(args: Map<String, Any?>, result: ToolResult): Map<String, Any?> = when (result) {
+    is ToolResult.MarkDoseTakenOutcome -> (result.result as? MarkDoseTakenResult.NeedsConfirmation)
+        ?.let { args + ("scheduledTime" to it.scheduledTime) } ?: args
+    is ToolResult.LogIncidentOutcome -> (result.result as? LogIncidentResult.NeedsConfirmation)
+        ?.let { args - "minutesAgo" + ("startedAt" to it.summary.startedAt) } ?: args
+    else -> args
 }
 
 /** JSON text for a tool result as it appears in the transcript, with an explicit `saved` field
@@ -91,7 +101,9 @@ class AiOrchestrator(
     private val tools: ToolRunner,
     private val client: AiClient,
 ) {
-    suspend fun runTurn(userMessage: String, history: List<HistoryEntry>, pending: PendingAction?): RunTurnResult {
+    suspend fun runTurn(userMessage: String, history: List<HistoryEntry>, pendingAction: PendingAction?): RunTurnResult {
+        val profileId = activeProfile.current
+        val pending = pendingAction?.takeIf { it.profileId == profileId }
         var workingHistory = history + HistoryEntry(HistoryRole.USER, userMessage)
 
         if (pending != null && isNegative(userMessage)) {
@@ -115,11 +127,10 @@ class AiOrchestrator(
             // An error or an unexpected result — let the model explain it.
         }
 
-        val medications = medicationRepository.listMedications(activeProfile.current).map { TrackedMedication(it.name, it.dosage) }
+        val medications = medicationRepository.listMedications(profileId).map { TrackedMedication(it.name, it.dosage) }
         var usedCorrectiveRetry = false
         var usedClaimRetry = false
         var lastToolCallSignature: String? = null
-        var nextPending: PendingAction? = null
 
         repeat(MAX_ITERATIONS) {
             val prompt = buildPrompt(workingHistory, medications)
@@ -130,7 +141,7 @@ class AiOrchestrator(
                 // safety filter blocked would otherwise be resent in every later prompt and get
                 // the rest of the conversation blocked too.
                 return if (savedThisTurn) {
-                    RunTurnResult(GENERATION_FAILED_REPLY, workingHistory, nextPending)
+                    RunTurnResult(GENERATION_FAILED_REPLY, workingHistory, null)
                 } else {
                     RunTurnResult(GENERATION_FAILED_REPLY, history, pending)
                 }
@@ -139,7 +150,7 @@ class AiOrchestrator(
                 is ParsedTurn.Reply -> {
                     if (!savedThisTurn && WRITE_CLAIM.containsMatchIn(turn.text)) {
                         if (usedClaimRetry) {
-                            return RunTurnResult(FALLBACK_REPLY, workingHistory, nextPending)
+                            return RunTurnResult(FALLBACK_REPLY, workingHistory, null)
                         }
                         usedClaimRetry = true
                         workingHistory = workingHistory +
@@ -148,11 +159,11 @@ class AiOrchestrator(
                         return@repeat
                     }
                     workingHistory = workingHistory + HistoryEntry(HistoryRole.ASSISTANT, turn.text)
-                    return RunTurnResult(turn.text, workingHistory, nextPending)
+                    return RunTurnResult(turn.text, workingHistory, null)
                 }
                 is ParsedTurn.Unparseable -> {
                     if (usedCorrectiveRetry) {
-                        return RunTurnResult(FALLBACK_REPLY, workingHistory, nextPending)
+                        return RunTurnResult(FALLBACK_REPLY, workingHistory, null)
                     }
                     usedCorrectiveRetry = true
                     workingHistory = workingHistory + HistoryEntry(
@@ -162,7 +173,7 @@ class AiOrchestrator(
                     return@repeat
                 }
                 is ParsedTurn.Tool -> {
-                    val rawArgs = turn.arguments - "confirmed"
+                    val rawArgs = turn.arguments - APP_ONLY_ARGS
                     val args = stripUnmentionedDuration(rawArgs, userMessage)
 
                     // A model retrying the exact same tool call after seeing its own result is
@@ -170,19 +181,21 @@ class AiOrchestrator(
                     // iteration budget on it.
                     val callSignature = "${turn.name}:${mapToJson(args)}"
                     if (callSignature == lastToolCallSignature) {
-                        return RunTurnResult(FALLBACK_REPLY, workingHistory, nextPending)
+                        return RunTurnResult(FALLBACK_REPLY, workingHistory, null)
                     }
                     lastToolCallSignature = callSignature
 
                     val result = tools.runTool(turn.name, args)
                     savedThisTurn = savedThisTurn || wasSaved(result)
-                    nextPending = if (needsConfirmation(result)) PendingAction(turn.name, args) else null
                     workingHistory = workingHistory +
                         HistoryEntry(HistoryRole.ASSISTANT, toolCallText(turn.name, args)) +
                         HistoryEntry(HistoryRole.TOOL, annotatedToolResultText(result))
 
-                    val question = if (nextPending != null) confirmationQuestion(result) else null
+                    // Every needs-confirmation result has a templated question, so having one is
+                    // what makes this call pending.
+                    val question = confirmationQuestion(result)
                     if (question != null) {
+                        val nextPending = PendingAction(turn.name, pinnedArgs(args, result), profileId)
                         workingHistory = workingHistory + HistoryEntry(HistoryRole.ASSISTANT, question)
                         return RunTurnResult(question, workingHistory, nextPending)
                     }
@@ -190,6 +203,6 @@ class AiOrchestrator(
             }
         }
 
-        return RunTurnResult(FALLBACK_REPLY, workingHistory, nextPending)
+        return RunTurnResult(FALLBACK_REPLY, workingHistory, null)
     }
 }

@@ -29,6 +29,7 @@ class AssistantViewModel(private val container: AppContainer) : ViewModel() {
 
     private var history: List<HistoryEntry> = emptyList()
     private var pending: PendingAction? = null
+    private var conversationProfileId: Long? = null
 
     fun checkAndPrepare() {
         viewModelScope.launch {
@@ -53,9 +54,19 @@ class AssistantViewModel(private val container: AppContainer) : ViewModel() {
         val text = _uiState.value.input.trim()
         if (text.isEmpty() || _uiState.value.sending) return
 
+        // The transcript is about one profile's medications — after a switch, start fresh rather
+        // than let the model (and the user) reason over someone else's.
+        val profileId = container.activeProfile.current
+        val switchedProfile = profileId != conversationProfileId
+        if (switchedProfile) {
+            history = emptyList()
+            pending = null
+            conversationProfileId = profileId
+        }
+
         _uiState.update {
             it.copy(
-                messages = it.messages + ChatMessage(fromUser = true, text = text),
+                messages = (if (switchedProfile) emptyList() else it.messages) + ChatMessage(fromUser = true, text = text),
                 input = "",
                 sending = true,
             )
